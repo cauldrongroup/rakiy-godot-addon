@@ -1,5 +1,7 @@
 # Rakiy Godot addon
 
+**This addon is in heavy early development.** API and behavior may change.
+
 Connect your Godot 4 game to the [Rakiy](https://github.com/rakiy/rakiy) relay and lobby service over WebSocket: handshake, send/receive data by peer ID, and create/join/leave/list lobbies. See the [client protocol](https://github.com/rakiy/rakiy/blob/main/protocol.md) for the full contract.
 
 ## Installation

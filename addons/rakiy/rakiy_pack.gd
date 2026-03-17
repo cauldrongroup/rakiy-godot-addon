@@ -44,15 +44,15 @@ static func _unpack_json(s: String) -> Variant:
 
 
 static func _unpack_binary(s: String) -> Variant:
-	var bytes: PackedByteArray = Marshalls.base64_to_raw(s)
-	if bytes.size() < BINARY_SIZE or bytes[0] != FORMAT_VERSION:
+	var decoded: PackedByteArray = Marshalls.base64_to_raw(s)
+	if decoded.size() < BINARY_SIZE or decoded[0] != FORMAT_VERSION:
 		return {}
 	return {
 		"p": [
-			bytes.decode_float(1),
-			bytes.decode_float(5),
-			bytes.decode_float(9),
+			decoded.decode_float(1),
+			decoded.decode_float(5),
+			decoded.decode_float(9),
 		],
-		"y": bytes.decode_float(17),
-		"pitch": bytes.decode_float(13),
+		"y": decoded.decode_float(17),
+		"pitch": decoded.decode_float(13),
 	}

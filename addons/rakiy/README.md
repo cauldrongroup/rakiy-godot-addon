@@ -2,7 +2,7 @@
 
 **This addon is in heavy early development.** API and behavior may change.
 
-Connect your Godot 4 game to the [Rakiy](https://github.com/rakiy/rakiy) relay and lobby service over WebSocket: handshake, send/receive data by peer ID, and create/join/leave/list lobbies. See the [client protocol](https://github.com/rakiy/rakiy/blob/main/protocol.md) for the full contract.
+Connect your Godot 4 game to the [Rakiy](https://github.com/cauldrongroup/rakiy-godot-addon) relay and lobby service over WebSocket: handshake, send/receive data by peer ID, and create/join/leave/list lobbies. See the [client protocol](https://github.com/cauldrongroup/rakiy-godot-addon/blob/main/protocol.md) for the full contract. **Full documentation:** [Rakiy docs — Godot add-on](https://docs.rakiy.up.railway.app/integrations/godot/).
 
 ## Installation
 
@@ -55,7 +55,7 @@ func _on_data_received(peer_id: int, channel: int, reliable: bool, payload: Vari
 
 ## Useful notes
 
-- **Channels**: Use small integers. Suggested: `RakiyConstants.CHANNEL_CONTROL` (0), `CHANNEL_RELIABLE_GAME` (1), `CHANNEL_UNRELIABLE_GAME` (2). Same semantics as in the [protocol](https://github.com/rakiy/rakiy/blob/main/protocol.md).
+- **Channels**: Use small integers. Suggested: `RakiyConstants.CHANNEL_CONTROL` (0), `CHANNEL_RELIABLE_GAME` (1), `CHANNEL_UNRELIABLE_GAME` (2). Same semantics as in the [protocol](https://github.com/cauldrongroup/rakiy-godot-addon/blob/main/protocol.md).
 - **Reliable vs unreliable**: Use reliable for chat or critical events; use unreliable for high-frequency updates (e.g. positions) where dropping packets is acceptable.
 - **wss vs ws**: In production and for HTML5 when your game is on HTTPS, use `wss://`. For local dev use `ws://127.0.0.1:3000/` (or your Rakiy URL). **Godot users**: use `127.0.0.1` instead of `localhost` to avoid a ~20–30s connect delay (engine tries IPv6 first and times out; see [godotengine/godot#67969](https://github.com/godotengine/godot/issues/67969)).
 - **Peer IDs**: After `lobby_created` or `lobby_joined`, use the `members` array (each has `peer_id` and `username`). Use `peer_id` as `target_peer_id` in `send_data()`.

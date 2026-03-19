@@ -12,6 +12,14 @@ Connect your Godot 4 game to the [Rakiy](https://github.com/cauldrongroup/rakiy-
 
 Alternatively, add a child node with script `res://addons/rakiy/rakiy_client.gd` and call `poll()` from your `_process()`.
 
+## v1.1.0 breaking changes
+
+**Signal renamed:** `connected` is now `websocket_opened`. This signal fires when the WebSocket opens and the handshake is sent, not when the server confirms the handshake. Use `handshake_ok` to know when the connection is ready.
+
+**Debug toggle:** `const DEBUG` is now `@export var debug` (lowercase, default `false`). Toggle it in the inspector or set `RakiyClient.debug = true` in code.
+
+**Handshake timeout:** Both the client and server now enforce a 10-second handshake timeout. If the server does not respond in time, `handshake_fail` is emitted automatically.
+
 ## Compact state sync (bandwidth optimization)
 
 For high-frequency player state updates (e.g. 20 Hz position/rotation sync), use `RakiyPack` instead of JSON to reduce bandwidth by ~60% per update.

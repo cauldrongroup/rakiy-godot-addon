@@ -29,11 +29,11 @@ static func unpack_player_state(payload: Variant) -> Variant:
 
 
 static func _unpack_json(s: String) -> Variant:
-	var parsed = JSON.parse_string(s)
+	var parsed: Variant = JSON.parse_string(s)
 	if parsed == null or not (parsed is Dictionary):
 		return {}
 	var d: Dictionary = parsed
-	var p = d.get("p", [])
+	var p: Variant = d.get("p", [])
 	if not (p is Array) or p.size() != 3:
 		return {}
 	return {

@@ -8,10 +8,10 @@ const _RakiyClientScript := preload("res://addons/rakiy/rakiy_client.gd")
 ## Same game_id for create and list so this demo only sees its own lobbies when multiple games share the server.
 const _DEMO_GAME_ID := "rakiy_demo"
 
-const _DEBUG := true
+var _debug := true
 
 func _demo_log(msg: String) -> void:
-	if _DEBUG:
+	if _debug:
 		print("[Rakiy Demo] ", msg)
 
 # Connection
@@ -44,7 +44,6 @@ var _current_members: Array = []
 
 
 func _ready() -> void:
-	# Use autoload RakiyClient if present (added under root); otherwise add as child for standalone demo
 	var root := get_tree().root
 	if root.get_node_or_null("RakiyClient") == null:
 		_demo_log("RakiyClient autoload not found, adding client as child node")
@@ -67,10 +66,9 @@ func _get_client() -> Node:
 
 
 func _build_ui() -> void:
-	var margin := 20
 	var v := VBoxContainer.new()
 	v.set_anchors_preset(Control.PRESET_FULL_RECT)
-	v.add_theme_constant_override("separation", 12)
+	v.add_theme_constant_override("separation", 8)
 	add_child(v)
 
 	# Connection panel
@@ -232,13 +230,6 @@ func _build_ui() -> void:
 	_log_text.editable = false
 	v.add_child(_log_text)
 
-	# Margins
-	v.add_theme_constant_override("separation", 8)
-	for c in v.get_children():
-		if c is Control:
-			c.add_theme_constant_override("margin_left", margin)
-			c.add_theme_constant_override("margin_right", margin)
-
 
 func _connect_signals() -> void:
 	var client := _get_client()
@@ -247,7 +238,7 @@ func _connect_signals() -> void:
 		_status_label.text = "Error: RakiyClient not found. Add as Autoload."
 		return
 	_demo_log("Connected signals to RakiyClient (node: %s)" % client.get_path())
-	client.connected.connect(_on_connected)
+	client.websocket_opened.connect(_on_websocket_opened)
 	client.disconnected.connect(_on_disconnected)
 	client.handshake_ok.connect(_on_handshake_ok)
 	client.handshake_fail.connect(_on_handshake_fail)
@@ -258,6 +249,34 @@ func _connect_signals() -> void:
 	client.lobby_members_updated.connect(_on_lobby_members_updated)
 	client.lobby_error.connect(_on_lobby_error)
 	client.data_received.connect(_on_data_received)
+
+
+func _exit_tree() -> void:
+	var client := _get_client()
+	if client == null:
+		return
+	if client.websocket_opened.is_connected(_on_websocket_opened):
+		client.websocket_opened.disconnect(_on_websocket_opened)
+	if client.disconnected.is_connected(_on_disconnected):
+		client.disconnected.disconnect(_on_disconnected)
+	if client.handshake_ok.is_connected(_on_handshake_ok):
+		client.handshake_ok.disconnect(_on_handshake_ok)
+	if client.handshake_fail.is_connected(_on_handshake_fail):
+		client.handshake_fail.disconnect(_on_handshake_fail)
+	if client.lobby_created.is_connected(_on_lobby_created):
+		client.lobby_created.disconnect(_on_lobby_created)
+	if client.lobby_joined.is_connected(_on_lobby_joined):
+		client.lobby_joined.disconnect(_on_lobby_joined)
+	if client.lobby_left.is_connected(_on_lobby_left):
+		client.lobby_left.disconnect(_on_lobby_left)
+	if client.lobby_list_received.is_connected(_on_lobby_list_received):
+		client.lobby_list_received.disconnect(_on_lobby_list_received)
+	if client.lobby_members_updated.is_connected(_on_lobby_members_updated):
+		client.lobby_members_updated.disconnect(_on_lobby_members_updated)
+	if client.lobby_error.is_connected(_on_lobby_error):
+		client.lobby_error.disconnect(_on_lobby_error)
+	if client.data_received.is_connected(_on_data_received):
+		client.data_received.disconnect(_on_data_received)
 
 
 func _update_ui_state() -> void:
@@ -312,7 +331,6 @@ func _on_disconnect_pressed() -> void:
 func _on_handshake_ok(peer_id: int) -> void:
 	_demo_log("handshake_ok received, peer_id=%d" % peer_id)
 	_update_ui_state()
-	# Subscribe to live lobby list so "Available lobbies" updates automatically
 	var client := _get_client()
 	if client:
 		client.lobby_list(_DEMO_GAME_ID, true)
@@ -325,14 +343,13 @@ func _on_handshake_fail(reason: String) -> void:
 
 
 func _process(_delta: float) -> void:
-	# Refresh status while connecting so "Connecting..." and final state show immediately
 	var client: Node = _get_client()
 	if client != null and client.is_connecting():
 		_update_ui_state()
 
 
-func _on_connected() -> void:
-	_demo_log("connected signal received (handshake sent)")
+func _on_websocket_opened() -> void:
+	_demo_log("websocket_opened signal received (handshake sent)")
 	_update_ui_state()
 
 
@@ -370,7 +387,6 @@ func _on_leave_pressed() -> void:
 func _on_refresh_pressed() -> void:
 	var client := _get_client()
 	if client:
-		# Subscribe so we get live lobby list updates (reactive)
 		client.lobby_list(_DEMO_GAME_ID, true)
 
 
@@ -433,7 +449,7 @@ func _refresh_members_list() -> void:
 	_members_list.clear()
 	for m in _current_members:
 		if m is Dictionary:
-			var pid = m.get("peer_id", 0)
+			var pid: int = int(m.get("peer_id", 0))
 			var uname: String = m.get("username", "")
 			_members_list.add_item("%d - %s" % [pid, uname])
 
@@ -444,6 +460,9 @@ func _on_send_pressed() -> void:
 		return
 	var tid_str := _target_peer_edit.text.strip_edges()
 	if tid_str.is_empty():
+		return
+	if not tid_str.is_valid_int():
+		_log_text.text += "[Error] Invalid peer ID: %s (must be a number)\n" % tid_str
 		return
 	var tid := int(tid_str)
 	var msg := _message_edit.text

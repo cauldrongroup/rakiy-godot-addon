@@ -5,10 +5,12 @@ extends Node
 ## Use as Autoload (Project → Project Settings → Autoload, path to this script) or add as child node.
 ## Poll every frame: call poll() from _process() (or use the node's _process when added to tree).
 
-## Set to true to print debug messages to the Godot output.
-const DEBUG := true
+@export var debug: bool = false
 
-signal connected
+const PROTOCOL_VERSION := 1
+const HANDSHAKE_TIMEOUT_SEC := 10.0
+
+signal websocket_opened
 signal disconnected
 signal handshake_ok(peer_id: int)
 signal handshake_fail(reason: String)
@@ -21,26 +23,30 @@ signal lobby_list_received(lobbies: Array)
 signal lobby_members_updated(lobby_id: String, members: Array)
 signal lobby_error(reason: String)
 
-const STATE_CLOSED := 0
-const STATE_CONNECTING := 1
-const STATE_OPEN := 2
-
 var _ws: WebSocketPeer
 var _peer_id: int = -1
 var _handshaken: bool = false
 var _pending_username: String = ""
 var _pending_url: String = ""
+var _handshake_elapsed: float = -1.0
 
 func _ready() -> void:
 	_ws = WebSocketPeer.new()
+	set_process(false)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	if _handshake_elapsed >= 0.0 and not _handshaken:
+		_handshake_elapsed += delta
+		if _handshake_elapsed >= HANDSHAKE_TIMEOUT_SEC:
+			_handshake_elapsed = -1.0
+			_fail_connection("Handshake timed out (no response within %d seconds)" % int(HANDSHAKE_TIMEOUT_SEC))
+			return
 	poll()
 
 
 func _log(msg: String) -> void:
-	if DEBUG:
+	if debug:
 		print("[Rakiy] ", msg)
 
 
@@ -67,8 +73,7 @@ func poll() -> void:
 		if _ws.get_ready_state() == WebSocketPeer.STATE_CLOSED:
 			_log("WebSocket STATE_CLOSED")
 			_close_connection()
-	elif _pending_url.is_empty() == false and state != WebSocketPeer.STATE_OPEN:
-		# Pending connection: poll so socket can move from CLOSED -> CONNECTING -> OPEN (or fail)
+	elif not _pending_url.is_empty() and state != WebSocketPeer.STATE_OPEN:
 		_ws.poll()
 		var new_state := _ws.get_ready_state()
 		if new_state == WebSocketPeer.STATE_OPEN:
@@ -81,22 +86,28 @@ func poll() -> void:
 
 func _close_connection() -> void:
 	_log("Closing connection (peer_id was %d)" % _peer_id)
-	_ws.close()
+	if _ws != null:
+		_ws.close()
 	_peer_id = -1
 	_handshaken = false
 	_pending_url = ""
 	_pending_username = ""
+	_handshake_elapsed = -1.0
+	set_process(false)
 	disconnected.emit()
 
 
 func _fail_connection(reason: String) -> void:
 	_log("Connection failed: %s" % reason)
-	_ws.close()
+	if _ws != null:
+		_ws.close()
 	_ws = WebSocketPeer.new()
 	_peer_id = -1
 	_handshaken = false
 	_pending_url = ""
 	_pending_username = ""
+	_handshake_elapsed = -1.0
+	set_process(false)
 	handshake_fail.emit(reason)
 	push_error("[Rakiy] %s" % reason)
 
@@ -105,12 +116,15 @@ func _send_handshake() -> void:
 	var msg := {
 		"type": "handshake",
 		"username": _pending_username,
-		"version": 1
+		"version": PROTOCOL_VERSION
 	}
 	var body := JSON.stringify(msg)
 	_log("Sending handshake: %s" % body)
-	_ws.send_text(body)
-	connected.emit()
+	var err := _ws.send_text(body)
+	if err != OK:
+		_log("send_text failed during handshake: %s" % error_string(err))
+	_handshake_elapsed = 0.0
+	websocket_opened.emit()
 
 
 func _handle_message(text: String) -> void:
@@ -128,6 +142,7 @@ func _handle_message(text: String) -> void:
 	var msg_type: String = msg.get("type", "")
 	if msg_type == "handshake_ok":
 		_handshaken = true
+		_handshake_elapsed = -1.0
 		_peer_id = int(msg.get("peer_id", -1))
 		_log("Handshake OK, peer_id=%d" % _peer_id)
 		handshake_ok.emit(_peer_id)
@@ -153,7 +168,6 @@ func _handle_message(text: String) -> void:
 		var channel: int = int(msg.get("channel", 0))
 		var reliable: bool = bool(msg.get("reliable", true))
 		var payload_var: Variant = msg.get("payload", "")
-		# Server may send payload as base64 string; pass through as string; caller can decode if needed
 		data_received.emit(from_id, channel, reliable, payload_var)
 
 
@@ -183,6 +197,7 @@ func connect_to_url(url: String, username: String) -> void:
 		_pending_url = ""
 		_pending_username = ""
 		return
+	set_process(true)
 	_log("connect_to_url returned OK, state=%s (CONNECTING=%s)" % [_ws.get_ready_state(), WebSocketPeer.STATE_CONNECTING])
 
 
@@ -194,6 +209,8 @@ func disconnect_from_host() -> void:
 	_handshaken = false
 	_pending_url = ""
 	_pending_username = ""
+	_handshake_elapsed = -1.0
+	set_process(false)
 
 
 func is_connected_to_host() -> bool:
@@ -202,7 +219,7 @@ func is_connected_to_host() -> bool:
 
 ## True when a connection attempt is in progress (after connect_to_url, before handshake_ok or handshake_fail).
 func is_connecting() -> bool:
-	return _pending_url.is_empty() == false and not _handshaken
+	return not _pending_url.is_empty() and not _handshaken
 
 
 func is_handshaken() -> bool:
@@ -229,7 +246,9 @@ func send_data(target_peer_id: int, channel: int, reliable: bool, payload: Varia
 		"reliable": reliable,
 		"payload": payload_str
 	}
-	_ws.send_text(JSON.stringify(msg))
+	var err := _ws.send_text(JSON.stringify(msg))
+	if err != OK:
+		_log("send_data failed: %s" % error_string(err))
 
 
 ## Create a lobby. Response via lobby_created or lobby_error.
@@ -244,21 +263,27 @@ func lobby_create(name_: String = "", max_players: int = 4, metadata: Dictionary
 		msg["name"] = name_
 	if not metadata.is_empty():
 		msg["metadata"] = metadata
-	_ws.send_text(JSON.stringify(msg))
+	var err := _ws.send_text(JSON.stringify(msg))
+	if err != OK:
+		_log("lobby_create send failed: %s" % error_string(err))
 
 
 ## Join a lobby by ID. Response via lobby_joined or lobby_error.
 func lobby_join(lobby_id: String) -> void:
 	if not _handshaken or _ws == null:
 		return
-	_ws.send_text(JSON.stringify({"type": "lobby_join", "lobby_id": lobby_id}))
+	var err := _ws.send_text(JSON.stringify({"type": "lobby_join", "lobby_id": lobby_id}))
+	if err != OK:
+		_log("lobby_join send failed: %s" % error_string(err))
 
 
 ## Leave the given lobby. Response via lobby_left.
 func lobby_leave(lobby_id: String) -> void:
 	if not _handshaken or _ws == null:
 		return
-	_ws.send_text(JSON.stringify({"type": "lobby_leave", "lobby_id": lobby_id}))
+	var err := _ws.send_text(JSON.stringify({"type": "lobby_leave", "lobby_id": lobby_id}))
+	if err != OK:
+		_log("lobby_leave send failed: %s" % error_string(err))
 
 
 ## Request list of lobbies. Response via lobby_list_received.
@@ -272,4 +297,6 @@ func lobby_list(game_id: String = "", subscribe: bool = false) -> void:
 		msg["game_id"] = game_id
 	if subscribe:
 		msg["subscribe"] = true
-	_ws.send_text(JSON.stringify(msg))
+	var err := _ws.send_text(JSON.stringify(msg))
+	if err != OK:
+		_log("lobby_list send failed: %s" % error_string(err))

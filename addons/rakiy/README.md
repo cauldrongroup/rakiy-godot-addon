@@ -20,6 +20,10 @@ Alternatively, add a child node with script `res://addons/rakiy/rakiy_client.gd`
 
 **Handshake timeout:** Both the client and server now enforce a 10-second handshake timeout. If the server does not respond in time, `handshake_fail` is emitted automatically.
 
+**HTML5 / Web export:** The client sends the JSON handshake as soon as the socket is `STATE_OPEN`, including when the browser reports open on the first `poll()` (so the server always receives `{"type":"handshake",...}` within a few hundred ms of connect). `connect_to_url` runs one immediate `poll()` so the first send is not delayed until the next frame.
+
+**Verify in the browser:** Export to Web, open DevTools → **Network** → select the WebSocket → **Messages**. You should see an **outgoing** text frame with `"type":"handshake"` shortly after connect, before any server `handshake_fail`.
+
 ## Compact state sync (bandwidth optimization)
 
 For high-frequency player state updates (e.g. 20 Hz position/rotation sync), use `RakiyPack` instead of JSON to reduce bandwidth by ~60% per update.

@@ -57,6 +57,10 @@ func poll() -> void:
 	var state := _ws.get_ready_state()
 	if state == WebSocketPeer.STATE_OPEN:
 		_ws.poll()
+		# HTML5 can report STATE_OPEN on the first poll; handshake was only sent from the CONNECTING branch.
+		if not _handshaken and _handshake_elapsed < 0.0 and not _pending_url.is_empty():
+			_log("WebSocket opened, sending handshake")
+			_send_handshake()
 		var code := _ws.get_close_code()
 		while _ws.get_available_packet_count() > 0:
 			var packet := _ws.get_packet()
@@ -199,6 +203,7 @@ func connect_to_url(url: String, username: String) -> void:
 		return
 	set_process(true)
 	_log("connect_to_url returned OK, state=%s (CONNECTING=%s)" % [_ws.get_ready_state(), WebSocketPeer.STATE_CONNECTING])
+	poll()
 
 
 ## Close the WebSocket. You get a new peer_id after reconnecting.

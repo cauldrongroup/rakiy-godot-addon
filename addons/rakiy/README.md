@@ -1,54 +1,89 @@
 # Rakiy Godot addon
 
-**This addon is in heavy early development.** API and behavior may change.
-
-Connect your Godot 4 game to the [Rakiy](https://github.com/cauldrongroup/rakiy-godot-addon) relay and lobby service over WebSocket: handshake, send/receive data by peer ID, and create/join/leave/list lobbies. See the [client protocol](https://github.com/cauldrongroup/rakiy-godot-addon/blob/main/protocol.md) for the full contract. **Full documentation:** [Rakiy docs — Godot add-on](https://docs.rakiy.up.railway.app/integrations/godot/).
+Connect your Godot 4 game to the Rakiy relay and lobby service over WebSocket. **Protocol v2**: compact handshake JSON; game relay and lobby use **binary** frames only. See the monorepo [`multiplayer/protocol.md`](https://github.com/cauldrongroup/rakiy/blob/main/multiplayer/protocol.md) for the full contract.
 
 ## Installation
 
 1. Copy the `addons/rakiy` folder into your project's `addons/` directory.
-2. Enable the addon: **Project -> Project Settings -> Plugins** and enable "Rakiy" (if you use the optional editor plugin).
-3. Add the client as an Autoload: **Project -> Project Settings -> Autoload**, add `RakiyClient` with path `res://addons/rakiy/rakiy_client.gd`.
+2. Enable the addon: **Project → Project Settings → Plugins** and enable "Rakiy" (if you use the optional editor plugin).
+3. Add the client as an Autoload: **Project → Project Settings → Autoload**, add `RakiyClient` with path `res://addons/rakiy/rakiy_client.gd`.
 
 Alternatively, add a child node with script `res://addons/rakiy/rakiy_client.gd` and call `poll()` from your `_process()`.
 
-## v1.1.0 breaking changes
+## Handshake
 
-**Signal renamed:** `connected` is now `websocket_opened`. This signal fires when the WebSocket opens and the handshake is sent, not when the server confirms the handshake. Use `handshake_ok` to know when the connection is ready.
+The client sends `{ "t": "hs", "v": 2, "u": "<username>" }`. Wait for `handshake_ok` before `send_data` or lobby calls.
 
-**Debug toggle:** `const DEBUG` is now `@export var debug` (lowercase, default `false`). Toggle it in the inspector or set `RakiyClient.debug = true` in code.
+## Relay and authority
 
-**Handshake timeout:** Both the client and server now enforce a 10-second handshake timeout. If the server does not respond in time, `handshake_fail` is emitted automatically.
+The Rakiy server **only relays** bytes and lists lobbies; it does **not** run your game simulation. **Host authority** (who simulates physics, migration when the host leaves) is **your game’s** responsibility. Use compact snapshots so clients can predict and reconcile.
 
-**HTML5 / Web export:** The client sends the JSON handshake as soon as the socket is `STATE_OPEN`, including when the browser reports open on the first `poll()` (so the server always receives `{"type":"handshake",...}` within a few hundred ms of connect). `connect_to_url` runs one immediate `poll()` so the first send is not delayed until the next frame.
+## Game relay on the wire
 
-**Verify in the browser:** Export to Web, open DevTools → **Network** → select the WebSocket → **Messages**. You should see an **outgoing** text frame with `"type":"handshake"` shortly after connect, before any server `handshake_fail`.
+Frames use **relay v2** (14-byte header) when payload size is ≤ **65535** bytes; larger frames use **v1** (16-byte header). Both are supported end-to-end.
 
-## Compact state sync (bandwidth optimization)
+## Compact state sync
 
-For high-frequency player state updates (e.g. 20 Hz position/rotation sync), use `RakiyPack` instead of JSON to reduce bandwidth by ~60% per update.
+- **Pose**: `RakiyPack.pack_player_state()` (half-float v2, 11 bytes) or `pack_player_states_batch()` (compact batch **0x04**, 10 bytes per entity). Legacy batch **0x03** is still decoded.
+- **Physics**: `pack_player_physics_state()` (**0x06**, linear velocity), `pack_player_physics_state_angular()` (**0x07**), or batches `pack_player_states_physics_batch()` / `pack_player_states_physics_angular_batch()`.
+- **Merged payloads**: `pack_merged_segments()` / `unpack_merged_segments()` (**0xFE**) to concatenate several `PackedByteArray` blobs into one relay payload (one header on the wire).
 
-**Sending:**
+Send game data with `send_data(..., RakiyConstants.CHANNEL_UNRELIABLE_GAME, false, payload)` for high-frequency updates.
+
+`unpack_player_state` and `unpack_player_states_batch` decode the formats above. Dictionaries may include `v` (linear velocity) and `w` (angular) for physics types.
+
+## Bandwidth and deltas
+
+The relay adds a fixed header per frame (see [protocol](https://github.com/cauldrongroup/rakiy/blob/main/multiplayer/protocol.md)); keep **game payloads** small and binary.
+
+- **Prefer `PackedByteArray`** from `RakiyPack` for gameplay state, not UTF-8 strings.
+- **Channels**: high-frequency state on **`CHANNEL_UNRELIABLE_GAME`** (2); chat and critical events on **`CHANNEL_RELIABLE_GAME`** (1).
+- **`unreliable_send_rate_cap`**: cap unreliable sends per window to avoid spikes.
+- **Batching**: `pack_merged_segments()` / `unpack_merged_segments()` (**0xFE**) to send several logical blobs in one relay payload (one header on the wire).
+- **Full snapshots**: `pack_player_state()` / `pack_player_physics_state_angular()` for periodic full snapshots (reliable on unreliable transport, occasional full packets help recover from desync).
+- **Selective / delta**: send only fields that changed compared to the last sent state:
+  - **Pose** `0x09`: `pack_selective_pose_delta(prev, curr, epsilon)` → `PackedByteArray` (empty if nothing changed — skip `send_data`). If a full v2 frame would be smaller, the helper returns `pack_player_state` instead.
+  - **Physics** `0x0A`: `pack_selective_physics_delta(prev, curr, epsilon)` (same rules vs full `0x07`).
+  - **Receive**: keep a per-peer `Dictionary` of last known state; on `data_received` with binary payload, use `apply_selective_pose(last_state, payload)` or `apply_selective_physics(last_state, payload)`; for full snapshots use `unpack_player_state` as before.
+  - **Inspect wire**: `unpack_selective_pose` / `unpack_selective_physics` return `mask` and decoded fields; `unpack_player_state` also recognizes `0x09` / `0x0A` and returns those inspection dicts.
+
+Example (pose delta over unreliable):
 
 ```gdscript
-const RAKIY_PACK := preload("res://addons/rakiy/rakiy_pack.gd")
+var _last_sent: Dictionary = {}  # same shape as unpack_player_state
+var _peer_state: Dictionary = {}  # peer_id -> last applied state (receive path)
 
-var payload := RAKIY_PACK.pack_player_state(position, yaw, pitch)
-RakiyClient.send_data(target_peer_id, RakiyConstants.CHANNEL_UNRELIABLE_GAME, false, payload)
-```
-
-`send_data` accepts `PackedByteArray` and base64-encodes it automatically.
-
-**Receiving:**
-
-```gdscript
-func _on_data_received(peer_id: int, channel: int, reliable: bool, payload: Variant) -> void:
-    var data = RAKIY_PACK.unpack_player_state(payload)
-    if data.is_empty():
+func _send_pose_if_changed(target_peer_id: int, state: Dictionary) -> void:
+    var delta := RakiyPack.pack_selective_pose_delta(_last_sent, state)
+    if delta.is_empty():
         return
-    var pos := Vector3(data.p[0], data.p[1], data.p[2])
-    var yaw := float(data.y)
-    var pitch := float(data.pitch)
+    RakiyClient.send_data(
+        target_peer_id,
+        RakiyConstants.CHANNEL_UNRELIABLE_GAME,
+        false,
+        delta,
+    )
+    _last_sent = state.duplicate(true)
+
+func _on_data_received(peer_id: int, _ch: int, _rel: bool, payload: Variant) -> void:
+    if payload is PackedByteArray:
+        var last: Dictionary = _peer_state.get(peer_id, {})
+        _peer_state[peer_id] = RakiyPack.apply_selective_pose(last, payload)
 ```
 
-`unpack_player_state` handles both the compact binary format and legacy JSON (`{"p":[x,y,z],"y":yaw,"pitch":pitch}`) for backward compatibility.
+## Client options
+
+- **`unreliable_send_rate_cap`** (default `0` = off): max unreliable **game-channel** sends per **`unreliable_send_rate_window_sec`** (default `1.0`) to limit flood / bandwidth spikes.
+
+## Lobbies
+
+- **`lobby_create(name, max_players, metadata, game_id)`** — **`game_id` is required** (non-empty after trim), e.g. `mygame@1.0.0`. Use the **same** string for list and join.
+- **`lobby_join(lobby_id, game_id)`** — must match the lobby’s `game_id` or the server rejects with `game mismatch`.
+
+Use `lobby_member_joined` and `lobby_member_left` to maintain the roster; you still receive full `members` on `lobby_created` / `lobby_joined`.
+
+## Demo
+
+The demo lives in `addons/rakiy/demo/` (`main.tscn` uses `demo_main.gd`). It builds a **3D arena** (ground + boundary walls), a **first-person mover** (`fps_player.tscn` / `fps_player.gd`: WASD, Space, mouse look, Esc to free cursor), and **remote peers** as colored capsule meshes (`remote_avatar.tscn`). After you **create or join a lobby**, your pose is broadcast to other members with `RakiyPack.pack_selective_pose_delta` on **`CHANNEL_UNRELIABLE_GAME`** (~20 Hz). Open two editor instances or two builds, connect to the same server, join the same lobby, and run around to verify sync.
+
+The left panel still includes connect, lobby, optional text chat, and the compact-binary test checkbox.

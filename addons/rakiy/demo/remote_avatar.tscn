@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://d1mx75xa33s45"]
+
+[ext_resource type="Script" path="res://addons/rakiy/demo/remote_avatar.gd" id="1_script"]
+
+[node name="RemoteAvatar" type="Node3D"]
+script = ExtResource("1_script")

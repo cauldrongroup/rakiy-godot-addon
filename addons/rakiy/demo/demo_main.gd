@@ -8,6 +8,10 @@ const _RemoteAvatarScene := preload("res://addons/rakiy/demo/remote_avatar.tscn"
 
 const _DEMO_GAME_ID := "rakiy_demo"
 const _SYNC_HZ := 20.0
+const _MIN_SYNC_HZ := 8.0
+const _MAX_SYNC_HZ := 24.0
+const _STATIONARY_VEL_SQ := 0.08
+const _INTEREST_RADIUS := 80.0
 ## Full pose snapshot (v2) every N sync ticks so peers can recover after unreliable packet loss (bandwidth tradeoff).
 const _FULL_SNAPSHOT_EVERY_N_TICKS := 40
 
@@ -67,7 +71,7 @@ func _ready() -> void:
 
 	var _rc := _get_client()
 	if _rc != null:
-		# Flood guard: ~20 Hz × (max peers − 1) sends/sec; adjust if you raise _SYNC_HZ or lobby size.
+		# Flood guard: one outbound frame per sync tick (broadcast counts as 1); raise if needed.
 		_rc.unreliable_send_rate_cap = 240
 		_rc.unreliable_send_rate_window_sec = 1.0
 
@@ -174,7 +178,7 @@ func _build_ui() -> void:
 	scroll.add_child(v)
 
 	var hint := Label.new()
-	hint.text = "3D arena: WASD move, Space jump, mouse look, Esc frees cursor / click game area to capture. Pose sync: RakiyPack selective deltas on unreliable channel (~20 Hz), periodic full snapshot ~2s, client send cap 240/s. Chat uses reliable channel."
+	hint.text = "3D arena: WASD move, Space jump, mouse look, Esc frees cursor / click game area to capture. Pose sync: RakiyReplication adaptive Hz (8–24), interest radius %dm, lobby broadcast when all peers relevant else per-peer unicast; RakiyPack deltas + ~2s keyframes; send cap 240/s. Chat uses reliable channel." % int(_INTEREST_RADIUS)
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(hint)
 
@@ -387,8 +391,18 @@ func _exit_tree() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if _current_lobby_id.is_empty() or _local_player == null:
+		return
+	var vel_sq: float = _local_player.velocity.length_squared()
+	var interval: float = RakiyReplication.suggested_sync_interval(
+		_SYNC_HZ,
+		_MIN_SYNC_HZ,
+		_MAX_SYNC_HZ,
+		vel_sq,
+		_STATIONARY_VEL_SQ,
+	)
 	_sync_accum += delta
-	if _sync_accum < 1.0 / _SYNC_HZ:
+	if _sync_accum < interval:
 		return
 	_sync_accum = 0.0
 	_broadcast_pose_if_playing()
@@ -411,14 +425,62 @@ func _broadcast_pose_if_playing() -> void:
 		if pkt.is_empty():
 			return
 	var self_id: int = client.get_peer_id()
+	var others: Array = _other_member_peer_ids(self_id)
+	if others.is_empty():
+		_last_sent_pose = st.duplicate(true)
+		return
+	var pos_map: Dictionary = _peer_positions_for_interest()
+	var relevant: Array = RakiyReplication.filter_peers_by_interest(
+		_local_player.global_position,
+		pos_map,
+		others,
+		_INTEREST_RADIUS,
+	)
+	if relevant.is_empty():
+		return
+	if _peer_id_set_equals(relevant, others):
+		client.send_lobby_broadcast(RakiyConstants.CHANNEL_UNRELIABLE_GAME, false, pkt)
+	else:
+		for pid_v in relevant:
+			client.send_data(int(pid_v), RakiyConstants.CHANNEL_UNRELIABLE_GAME, false, pkt)
+	_last_sent_pose = st.duplicate(true)
+
+
+func _other_member_peer_ids(self_id: int) -> Array:
+	var out: Array = []
 	for m in _current_members:
 		if not m is Dictionary:
 			continue
 		var pid: int = int(m.get("peer_id", -1))
-		if pid < 0 or pid == self_id:
+		if pid >= 0 and pid != self_id:
+			out.append(pid)
+	return out
+
+
+func _peer_positions_for_interest() -> Dictionary:
+	var d := {}
+	for m in _current_members:
+		if not m is Dictionary:
 			continue
-		client.send_data(pid, RakiyConstants.CHANNEL_UNRELIABLE_GAME, false, pkt)
-	_last_sent_pose = st.duplicate(true)
+		var pid: int = int(m.get("peer_id", -1))
+		if pid < 0:
+			continue
+		var st: Variant = _remote_pose_state.get(pid, null)
+		if st is Dictionary:
+			var p: Variant = (st as Dictionary).get("p", null)
+			if p is Vector3:
+				d[pid] = p
+	return d
+
+
+func _peer_id_set_equals(a: Array, b: Array) -> bool:
+	if a.size() != b.size():
+		return false
+	var aa: Array = a.duplicate()
+	var bb: Array = b.duplicate()
+	aa.sort()
+	bb.sort()
+	return aa == bb
 
 
 func _dictionary_from_unpack(u: Variant) -> Dictionary:

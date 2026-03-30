@@ -7,3 +7,6 @@ extends RefCounted
 const CHANNEL_CONTROL := 0
 const CHANNEL_RELIABLE_GAME := 1
 const CHANNEL_UNRELIABLE_GAME := 2
+
+## Client→server relay only: fan-out to all peers in shared lobbies (see multiplayer/protocol.md).
+const TARGET_LOBBY_BROADCAST := 0

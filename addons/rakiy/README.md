@@ -28,7 +28,7 @@ Frames use **relay v2** (14-byte header) when payload size is ≤ **65535** byte
 - **Physics**: `pack_player_physics_state()` (**0x06**, linear velocity), `pack_player_physics_state_angular()` (**0x07**), or batches `pack_player_states_physics_batch()` / `pack_player_states_physics_angular_batch()`.
 - **Merged payloads**: `pack_merged_segments()` / `unpack_merged_segments()` (**0xFE**) to concatenate several `PackedByteArray` blobs into one relay payload (one header on the wire).
 
-Send game data with `send_data(..., RakiyConstants.CHANNEL_UNRELIABLE_GAME, false, payload)` for high-frequency updates.
+Send game data with `send_data(..., RakiyConstants.CHANNEL_UNRELIABLE_GAME, false, payload)` for high-frequency updates, or **`send_lobby_broadcast(...)`** with **`RakiyConstants.TARGET_LOBBY_BROADCAST`** (`0`) so the **server** fans out one upload to every other peer in your lobby (see [`multiplayer/protocol.md`](https://github.com/cauldrongroup/rakiy/blob/main/multiplayer/protocol.md)).
 
 `unpack_player_state` and `unpack_player_states_batch` decode the formats above. Dictionaries may include `v` (linear velocity) and `w` (angular) for physics types.
 
@@ -38,8 +38,11 @@ The relay adds a fixed header per frame (see [protocol](https://github.com/cauld
 
 - **Prefer `PackedByteArray`** from `RakiyPack` for gameplay state, not UTF-8 strings.
 - **Channels**: high-frequency state on **`CHANNEL_UNRELIABLE_GAME`** (2); chat and critical events on **`CHANNEL_RELIABLE_GAME`** (1).
-- **`unreliable_send_rate_cap`**: cap unreliable sends per window to avoid spikes.
-- **Batching**: `pack_merged_segments()` / `unpack_merged_segments()` (**0xFE**) to send several logical blobs in one relay payload (one header on the wire).
+- **`unreliable_send_rate_cap`**: cap unreliable **WebSocket frames** per window (after bundling; one broadcast = one frame).
+- **Automatic bundling**: multiple `PackedByteArray` `send_data` calls to the same `(target, channel, reliable)` in one frame are **queued** and flushed after `poll()` as a single relay payload (one segment = raw bytes; several = `pack_merged_segments` **0xFE**). Incoming **0xFE** payloads are split and **`data_received` is emitted once per segment**. Call **`flush_pending_sends()`** if you drive **`poll()`** without the client node’s `_process`. **String** payloads are not merged with binary; they flush the pending binary queue for that key first.
+- **Manual batching**: you can still call `pack_merged_segments()` / `unpack_merged_segments()` yourself.
+- **Lobby broadcast**: `send_lobby_broadcast(channel, reliable, payload)` → one uplink frame, server delivers to all lobby peers (deduped).
+- **Replication helpers**: `RakiyReplication` (`rakiy_replication.gd`) — `filter_peers_by_interest`, `suggested_sync_interval` for adaptive cadence and relevance.
 - **Full snapshots**: `pack_player_state()` / `pack_player_physics_state_angular()` for periodic full snapshots (reliable on unreliable transport, occasional full packets help recover from desync).
 - **Selective / delta**: send only fields that changed compared to the last sent state:
   - **Pose** `0x09`: `pack_selective_pose_delta(prev, curr, epsilon)` → `PackedByteArray` (empty if nothing changed — skip `send_data`). If a full v2 frame would be smaller, the helper returns `pack_player_state` instead.
@@ -84,6 +87,6 @@ Use `lobby_member_joined` and `lobby_member_left` to maintain the roster; you st
 
 ## Demo
 
-The demo lives in `addons/rakiy/demo/` (`main.tscn` uses `demo_main.gd`). It builds a **3D arena** (ground + boundary walls), a **first-person mover** (`fps_player.tscn` / `fps_player.gd`: WASD, Space, mouse look, Esc to free cursor), and **remote peers** as colored capsule meshes (`remote_avatar.tscn`). After you **create or join a lobby**, your pose is broadcast to other members with `RakiyPack.pack_selective_pose_delta` on **`CHANNEL_UNRELIABLE_GAME`** (~20 Hz). Open two editor instances or two builds, connect to the same server, join the same lobby, and run around to verify sync.
+The demo lives in `addons/rakiy/demo/` (`main.tscn` uses `demo_main.gd`). It builds a **3D arena** (ground + boundary walls), a **first-person mover** (`fps_player.tscn` / `fps_player.gd`: WASD, Space, mouse look, Esc to free cursor), and **remote peers** as colored capsule meshes (`remote_avatar.tscn`). After you **create or join a lobby**, your pose uses **`RakiyPack` selective deltas**, **`RakiyReplication`** adaptive sync (8–24 Hz) and interest radius, **`send_lobby_broadcast`** when every other member is relevant (otherwise per-peer `send_data`). Open two editor instances or two builds, connect to the same server, join the same lobby, and run around to verify sync.
 
 The left panel still includes connect, lobby, optional text chat, and the compact-binary test checkbox.

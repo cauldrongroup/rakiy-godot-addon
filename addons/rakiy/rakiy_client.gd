@@ -60,6 +60,8 @@ var _pending_url: String = ""
 var _handshake_elapsed: float = -1.0
 var _unreliable_rate_window_start_ms: int = 0
 var _unreliable_count: int = 0
+## Pending PackedByteArray segments per (target, channel, reliable); flushed after poll / flush_pending_sends.
+var _out_queues: Dictionary = {}
 
 
 func _ready() -> void:
@@ -110,6 +112,7 @@ func poll() -> void:
 			_log("Connection closed by peer, code=%s" % code)
 			_close_connection()
 			return
+		_flush_outgoing_queues()
 	elif state == WebSocketPeer.STATE_CLOSING:
 		_ws.poll()
 		if _ws.get_ready_state() == WebSocketPeer.STATE_CLOSED:
@@ -137,6 +140,7 @@ func _close_connection() -> void:
 	_handshake_elapsed = -1.0
 	_unreliable_count = 0
 	_unreliable_rate_window_start_ms = 0
+	_out_queues.clear()
 	set_process(false)
 	disconnected.emit()
 
@@ -153,6 +157,7 @@ func _fail_connection(reason: String) -> void:
 	_handshake_elapsed = -1.0
 	_unreliable_count = 0
 	_unreliable_rate_window_start_ms = 0
+	_out_queues.clear()
 	set_process(false)
 	handshake_fail.emit(reason)
 	push_error("[Rakiy] %s" % reason)
@@ -347,6 +352,10 @@ func _handle_relay_binary_packet(packet: PackedByteArray) -> void:
 	var body := packet.slice(header_sz, header_sz + payload_len)
 	if (flags & RELAY_FLAG_UTF8_PAYLOAD) != 0:
 		data_received.emit(from_id, channel, reliable, body.get_string_from_utf8())
+	elif body.size() >= 2 and body[0] == RakiyPack.FORMAT_MERGED_SEGMENTS:
+		for seg in RakiyPack.unpack_merged_segments(body):
+			if seg is PackedByteArray:
+				data_received.emit(from_id, channel, reliable, seg as PackedByteArray)
 	else:
 		data_received.emit(from_id, channel, reliable, body)
 
@@ -439,6 +448,7 @@ func disconnect_from_host() -> void:
 	_pending_url = ""
 	_pending_username = ""
 	_handshake_elapsed = -1.0
+	_out_queues.clear()
 	set_process(false)
 
 
@@ -458,19 +468,67 @@ func get_peer_id() -> int:
 	return _peer_id
 
 
-func send_data(target_peer_id: int, channel: int, reliable: bool, payload: Variant) -> void:
+func _queue_key(target_peer_id: int, channel: int, reliable: bool) -> String:
+	return "%d|%d|%d" % [target_peer_id, channel, 1 if reliable else 0]
+
+
+func _flush_outgoing_queues() -> void:
+	if _out_queues.is_empty():
+		return
+	var keys: Array = _out_queues.keys()
+	for k in keys:
+		_flush_binary_queue_key(str(k))
+
+
+func _flush_binary_queue_key(key: String) -> void:
+	if not _out_queues.has(key):
+		return
+	var segs: Array = _out_queues[key]
+	_out_queues.erase(key)
+	var parts := key.split("|")
+	if parts.size() != 3:
+		return
+	var target_peer_id := int(parts[0])
+	var channel := int(parts[1])
+	var reliable := int(parts[2]) == 1
+	while segs.size() > 0:
+		if not _rate_limit_allows_unreliable(channel, reliable):
+			break
+		var body := _pop_next_outbound_blob(segs)
+		if body.is_empty():
+			break
+		_send_relay_immediate_after_rate_check(target_peer_id, channel, reliable, body)
+	if segs.size() > 0:
+		_out_queues[key] = segs
+
+
+func _pop_next_outbound_blob(segs: Array) -> PackedByteArray:
+	if segs.is_empty():
+		return PackedByteArray()
+	if segs.size() == 1:
+		return segs.pop_front() as PackedByteArray
+	var merged: PackedByteArray = RakiyPack.pack_merged_segments(segs.duplicate())
+	if merged.size() <= RELAY_V2_MAX_PAYLOAD:
+		segs.clear()
+		return merged
+	return segs.pop_front() as PackedByteArray
+
+
+func _rate_limit_allows_unreliable(channel: int, reliable: bool) -> bool:
+	if unreliable_send_rate_cap <= 0 or reliable or channel != CHANNEL_UNRELIABLE_GAME:
+		return true
+	var now_ms: int = Time.get_ticks_msec()
+	var window_ms: int = maxi(1, int(unreliable_send_rate_window_sec * 1000.0))
+	if now_ms - _unreliable_rate_window_start_ms >= window_ms:
+		_unreliable_rate_window_start_ms = now_ms
+		_unreliable_count = 0
+	return _unreliable_count < unreliable_send_rate_cap
+
+
+func _send_relay_immediate_after_rate_check(target_peer_id: int, channel: int, reliable: bool, payload: Variant) -> void:
 	if not _handshaken or _ws == null or not is_connected_to_host():
 		return
 	if unreliable_send_rate_cap > 0 and not reliable and channel == CHANNEL_UNRELIABLE_GAME:
-		var now_ms: int = Time.get_ticks_msec()
-		var window_ms: int = int(unreliable_send_rate_window_sec * 1000.0)
-		if window_ms < 1:
-			window_ms = 1
-		if now_ms - _unreliable_rate_window_start_ms >= window_ms:
-			_unreliable_rate_window_start_ms = now_ms
-			_unreliable_count = 0
-		if _unreliable_count >= unreliable_send_rate_cap:
-			return
 		_unreliable_count += 1
 	var frame := _pack_relay_outbound(target_peer_id, channel, reliable, payload)
 	if frame.is_empty():
@@ -478,6 +536,39 @@ func send_data(target_peer_id: int, channel: int, reliable: bool, payload: Varia
 	var err := _ws.put_packet(frame)
 	if err != OK:
 		_log("send_data failed: %s" % error_string(err))
+
+
+func _send_relay_immediate(target_peer_id: int, channel: int, reliable: bool, payload: Variant) -> void:
+	if not _handshaken or _ws == null or not is_connected_to_host():
+		return
+	if not _rate_limit_allows_unreliable(channel, reliable):
+		return
+	_send_relay_immediate_after_rate_check(target_peer_id, channel, reliable, payload)
+
+
+## Flush queued binary `PackedByteArray` sends (merged per target/channel/reliable). Call after `poll()` if you drive the client manually without `_process`.
+func flush_pending_sends() -> void:
+	_flush_outgoing_queues()
+
+
+func send_data(target_peer_id: int, channel: int, reliable: bool, payload: Variant) -> void:
+	if not _handshaken or _ws == null or not is_connected_to_host():
+		return
+	var key := _queue_key(target_peer_id, channel, reliable)
+	if payload is PackedByteArray:
+		var pb: PackedByteArray = payload as PackedByteArray
+		if pb.is_empty():
+			return
+		var arr: Array = _out_queues.get(key, [])
+		arr.append(pb)
+		_out_queues[key] = arr
+		return
+	_flush_binary_queue_key(key)
+	_send_relay_immediate(target_peer_id, channel, reliable, payload)
+
+
+func send_lobby_broadcast(channel: int, reliable: bool, payload: Variant) -> void:
+	send_data(RakiyConstants.TARGET_LOBBY_BROADCAST, channel, reliable, payload)
 
 
 func lobby_create(name_: String = "", max_players: int = 4, metadata: Dictionary = {}, game_id: String = "") -> void:

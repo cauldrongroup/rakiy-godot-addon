@@ -32,8 +32,10 @@ var _status_label: Label
 
 var _lobby_name_edit: LineEdit
 var _max_players_spin: SpinBox
+var _private_lobby_cb: CheckBox
 var _create_btn: Button
 var _lobby_id_edit: LineEdit
+var _join_passcode_edit: LineEdit
 var _join_btn: Button
 var _leave_btn: Button
 var _refresh_btn: Button
@@ -246,6 +248,10 @@ func _build_ui() -> void:
 	_max_players_spin.max_value = 16
 	_max_players_spin.value = 4
 	create_row.add_child(_max_players_spin)
+	_private_lobby_cb = CheckBox.new()
+	_private_lobby_cb.text = "Private"
+	_private_lobby_cb.tooltip_text = "Hidden from lobby list; server assigns a 4-digit passcode for join."
+	create_row.add_child(_private_lobby_cb)
 	_create_btn = Button.new()
 	_create_btn.text = "Create Lobby"
 	_create_btn.pressed.connect(_on_create_lobby_pressed)
@@ -260,6 +266,13 @@ func _build_ui() -> void:
 	_lobby_id_edit.placeholder_text = "Paste lobby ID to join"
 	_lobby_id_edit.custom_minimum_size.x = 200
 	join_row.add_child(_lobby_id_edit)
+	var pc_lbl := Label.new()
+	pc_lbl.text = "Pass:"
+	join_row.add_child(pc_lbl)
+	_join_passcode_edit = LineEdit.new()
+	_join_passcode_edit.placeholder_text = "4-digit (if private)"
+	_join_passcode_edit.custom_minimum_size.x = 72
+	join_row.add_child(_join_passcode_edit)
 	_join_btn = Button.new()
 	_join_btn.text = "Join"
 	_join_btn.pressed.connect(_on_join_pressed)
@@ -630,7 +643,7 @@ func _update_ui_state() -> void:
 	var connecting: bool = client != null and client.is_connecting()
 	_connect_btn.disabled = conn or connecting
 	_disconnect_btn.disabled = not conn and not connecting
-	_create_btn.disabled = not handshaken
+	_create_btn.disabled = not handshaken or not _current_lobby_id.is_empty()
 	_join_btn.disabled = not handshaken
 	_leave_btn.disabled = not handshaken or _current_lobby_id.is_empty()
 	_refresh_btn.disabled = not handshaken
@@ -702,14 +715,14 @@ func _on_disconnected() -> void:
 func _on_create_lobby_pressed() -> void:
 	var client := _get_client()
 	if client:
-		client.lobby_create(_lobby_name_edit.text.strip_edges(), int(_max_players_spin.value), {}, _DEMO_GAME_ID)
+		client.lobby_create(_lobby_name_edit.text.strip_edges(), int(_max_players_spin.value), {}, _DEMO_GAME_ID, _private_lobby_cb.button_pressed)
 
 
 func _on_join_pressed() -> void:
 	var client := _get_client()
 	var lid := _lobby_id_edit.text.strip_edges()
 	if client and not lid.is_empty():
-		client.lobby_join(lid, _DEMO_GAME_ID)
+		client.lobby_join(lid, _DEMO_GAME_ID, _join_passcode_edit.text.strip_edges())
 
 
 func _on_leave_pressed() -> void:
@@ -730,12 +743,15 @@ func _on_refresh_pressed() -> void:
 		client.lobby_list(_DEMO_GAME_ID, true)
 
 
-func _on_lobby_created(lobby_id: String, members: Array) -> void:
+func _on_lobby_created(lobby_id: String, members: Array, passcode: String = "") -> void:
 	_current_lobby_id = lobby_id
 	_current_members = members
-	_current_lobby_label.text = "Current lobby: %s (copy ID to share)" % lobby_id
-	_refresh_members_list()
-	_log_text.text += "[Lobby created] %s\n" % lobby_id
+	if passcode.is_empty():
+		_current_lobby_label.text = "Current lobby: %s (copy ID to share)" % lobby_id
+		_log_text.text += "[Lobby created] %s\n" % lobby_id
+	else:
+		_current_lobby_label.text = "Current lobby: %s — pass %s (not listed)" % [lobby_id, passcode]
+		_log_text.text += "[Lobby created] %s passcode %s\n" % [lobby_id, passcode]
 	_ensure_local_player()
 	_sync_remote_roster()
 	_update_ui_state()

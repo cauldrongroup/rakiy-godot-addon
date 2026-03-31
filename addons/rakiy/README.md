@@ -80,10 +80,10 @@ func _on_data_received(peer_id: int, _ch: int, _rel: bool, payload: Variant) -> 
 
 ## Lobbies
 
-- **`lobby_create(name, max_players, metadata, game_id)`** — **`game_id` is required** (non-empty after trim), e.g. `mygame@1.0.0`. Use the **same** string for list and join.
-- **`lobby_join(lobby_id, game_id)`** — must match the lobby’s `game_id` or the server rejects with `game mismatch`.
+- **`lobby_create(name, max_players, metadata, game_id, private_lobby = false)`** — **`game_id` is required** (non-empty after trim), e.g. `mygame@1.0.0`. Use the **same** string for list and join. Set **`private_lobby`** to hide the lobby from the lobby list; the server assigns a **4-digit numeric passcode** and returns it only on **`lobby_created`** (third argument).
+- **`lobby_join(lobby_id, game_id, passcode = "")`** — must match the lobby’s `game_id` or the server rejects with `game mismatch`. For private lobbies, pass the **4-digit** code or the server responds with `passcode required` / `invalid passcode`.
 
-Use `lobby_member_joined` and `lobby_member_left` to maintain the roster; you still receive full `members` on `lobby_created` / `lobby_joined`.
+Use `lobby_member_joined` and `lobby_member_left` to maintain the roster; you still receive full `members` on `lobby_created` / `lobby_joined`. **`lobby_created`** includes **`passcode`** (empty string for public lobbies).
 
 ## Demo
 

@@ -39,12 +39,15 @@ const OP_SRV_MEMBER_JOIN := 0x14
 const OP_SRV_MEMBER_LEAVE := 0x15
 const OP_SRV_ERROR := 0x1F
 
+## Bit 0 of optional create trailing flags (see multiplayer control-binary CREATE_FLAG_PRIVATE).
+const CREATE_FLAG_PRIVATE := 1
+
 signal websocket_opened
 signal disconnected
 signal handshake_ok(peer_id: int)
 signal handshake_fail(reason: String)
 signal data_received(peer_id: int, channel: int, reliable: bool, payload: Variant)
-signal lobby_created(lobby_id: String, members: Array)
+signal lobby_created(lobby_id: String, members: Array, passcode: String)
 signal lobby_joined(lobby_id: String, members: Array)
 signal lobby_left(lobby_id: String)
 signal lobby_list_received(lobbies: Array)
@@ -242,8 +245,14 @@ func _handle_control_binary_packet(packet: PackedByteArray) -> void:
 				var uname := packet.slice(o, o + ulen).get_string_from_utf8()
 				o += ulen
 				members.append({"peer_id": pid, "username": uname})
+			var passcode := ""
+			if op == OP_SRV_CREATED and o < packet.size():
+				var plen: int = int(packet[o])
+				o += 1
+				if plen > 0 and o + plen <= packet.size():
+					passcode = packet.slice(o, o + plen).get_string_from_utf8()
 			if op == OP_SRV_CREATED:
-				lobby_created.emit(lobby_id, members)
+				lobby_created.emit(lobby_id, members, passcode)
 			else:
 				lobby_joined.emit(lobby_id, members)
 		OP_SRV_LEFT:
@@ -571,7 +580,7 @@ func send_lobby_broadcast(channel: int, reliable: bool, payload: Variant) -> voi
 	send_data(RakiyConstants.TARGET_LOBBY_BROADCAST, channel, reliable, payload)
 
 
-func lobby_create(name_: String = "", max_players: int = 4, metadata: Dictionary = {}, game_id: String = "") -> void:
+func lobby_create(name_: String = "", max_players: int = 4, metadata: Dictionary = {}, game_id: String = "", private_lobby: bool = false) -> void:
 	if not _handshaken or _ws == null:
 		return
 	var meta_str := JSON.stringify(metadata)
@@ -580,18 +589,22 @@ func lobby_create(name_: String = "", max_players: int = 4, metadata: Dictionary
 	_append_utf16_len_string(payload, game_id)
 	_append_utf16_len_string(payload, name_)
 	_append_utf16_len_string(payload, meta_str)
+	if private_lobby:
+		payload.append(CREATE_FLAG_PRIVATE)
 	var pkt := _pack_control_packet(OP_CLIENT_CREATE, payload)
 	var err := _ws.put_packet(pkt)
 	if err != OK:
 		_log("lobby_create send failed: %s" % error_string(err))
 
 
-func lobby_join(lobby_id: String, game_id: String) -> void:
+func lobby_join(lobby_id: String, game_id: String, passcode: String = "") -> void:
 	if not _handshaken or _ws == null:
 		return
 	var payload := PackedByteArray()
 	_append_utf16_len_string(payload, lobby_id)
 	_append_utf16_len_string(payload, game_id)
+	if not passcode.is_empty():
+		_append_utf16_len_string(payload, passcode)
 	var pkt := _pack_control_packet(OP_CLIENT_JOIN, payload)
 	var err := _ws.put_packet(pkt)
 	if err != OK:

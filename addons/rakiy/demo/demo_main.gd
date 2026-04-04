@@ -5,6 +5,7 @@ extends Node3D
 const _RakiyDemoWorldScript := preload("res://addons/rakiy/demo/demo_world.gd")
 
 const _RakiyClientScript := preload("res://addons/rakiy/rakiy_client.gd")
+const _RakiyP2PScript := preload("res://addons/rakiy/rakiy_p2p.gd")
 const _FpsScene := preload("res://addons/rakiy/demo/fps_player.tscn")
 const _RemoteAvatarScene := preload("res://addons/rakiy/demo/remote_avatar.tscn")
 
@@ -37,6 +38,9 @@ var _remote_avatars: Dictionary = {}
 var _current_lobby_id: String = ""
 var _current_members: Array = []
 
+## Desktop: WebRTC helper for true P2P data paths (web export uses relay-only legs).
+var _p2p_helper: RakiyP2P = null
+
 
 func _ready() -> void:
 	var root := get_tree().root
@@ -54,8 +58,13 @@ func _ready() -> void:
 		_rc.unreliable_send_rate_cap = 240
 		_rc.unreliable_send_rate_window_sec = 1.0
 		_rc.debug = true
-		# Match public relay expectations: WebSocket traffic is server-mediated (same as web export).
-		_rc.handshake_capability = "relay"
+		# Web/HTML5: no native WebRTC helper — full relay. Desktop: p2p capability + RakiyP2P for data channels.
+		if OS.has_feature("web"):
+			_rc.handshake_capability = "relay"
+		else:
+			_rc.handshake_capability = "p2p"
+			_p2p_helper = _RakiyP2PScript.new()
+			_rc.set_p2p_helper(_p2p_helper)
 		if not _rc.debug_log.is_connected(_on_rakiy_debug_log):
 			_rc.debug_log.connect(_on_rakiy_debug_log)
 

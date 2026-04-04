@@ -126,13 +126,25 @@ func poll() -> void:
 	if st != WebSocketPeer.STATE_OPEN:
 		return
 	while _ws.get_available_packet_count() > 0:
-		if _ws.get_packet_error() != OK:
+		var is_text := _ws.was_string_packet()
+		var pkt: PackedByteArray = _ws.get_packet()
+		var perr := _ws.get_packet_error()
+		if perr != OK:
+			_dbg("ws get_packet_error=%s (after get_packet, is_text=%s)" % [error_string(perr), is_text])
 			continue
-		if _ws.was_string_packet():
-			var t := _ws.get_packet().get_string_from_utf8()
-			_handle_text(t)
-		else:
-			_handle_binary(_ws.get_packet())
+		if is_text:
+			_handle_text(pkt.get_string_from_utf8())
+			continue
+		# Some stacks deliver JSON as binary UTF-8; Godot reports was_string_packet() == false.
+		if not _handshaken and pkt.size() > 0 and pkt.size() <= 8192:
+			var as_text := pkt.get_string_from_utf8()
+			if as_text.length() > 0 and as_text[0] == "{" and _looks_like_handshake_json(as_text):
+				_dbg("frame is binary opcode but UTF-8 JSON (handshake path); parsing as text")
+				_handle_text(as_text)
+				continue
+		if debug and not _handshaken and pkt.size() > 0 and pkt.size() <= 64:
+			_dbg("binary pre-handshake %d bytes: %s" % [pkt.size(), pkt.hex_encode()])
+		_handle_binary(pkt)
 	if _p2p:
 		_p2p.poll()
 
@@ -408,6 +420,12 @@ func send_lobby_broadcast(channel: int, reliable: bool, payload: Variant) -> voi
 
 func flush_pending_sends() -> void:
 	pass
+
+
+func _looks_like_handshake_json(s: String) -> bool:
+	if s.length() < 8 or s.length() > 8192:
+		return false
+	return s[0] == "{" and s.contains("\"t\"")
 
 
 func _dbg(line: String) -> void:

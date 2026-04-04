@@ -27,6 +27,31 @@ func _demo_log(msg: String) -> void:
 	if _debug:
 		print("[Rakiy Demo] ", msg)
 
+
+func _member_dict(peer_id: int, username: String, capability: int = 0) -> Dictionary:
+	return {
+		"peer_id": int(peer_id),
+		"username": str(username).strip_edges(),
+		"capability": int(capability),
+	}
+
+
+func _member_dict_from_wire(d: Dictionary) -> Dictionary:
+	return {
+		"peer_id": int(d.get("peer_id", -1)),
+		"username": str(d.get("username", "")).strip_edges(),
+		"capability": int(d.get("capability", 0)),
+	}
+
+
+func _normalize_members(arr: Array) -> Array:
+	var out: Array = []
+	for item in arr:
+		if item is Dictionary:
+			out.append(_member_dict_from_wire(item as Dictionary))
+	return out
+
+
 var _last_sent_pose: Dictionary = {}
 var _remote_pose_state: Dictionary = {}
 var _sync_accum: float = 0.0
@@ -40,6 +65,8 @@ var _current_members: Array = []
 
 ## Desktop: WebRTC helper for true P2P data paths (web export uses relay-only legs).
 var _p2p_helper: RakiyP2P = null
+
+var _transport_debug_accum: float = 0.0
 
 
 func _ready() -> void:
@@ -300,13 +327,19 @@ func _peer_color(peer_id: int) -> Color:
 
 func _username_for_peer(peer_id: int) -> String:
 	for m in _current_members:
-		if m is Dictionary and int(m.get("peer_id", -1)) == peer_id:
-			return str(m.get("username", ""))
+		if m is not Dictionary:
+			continue
+		var d: Dictionary = m
+		if int(d.get("peer_id", -1)) != peer_id:
+			continue
+		return str(d.get("username", "")).strip_edges()
 	return ""
 
 
 func _display_name_for_peer(peer_id: int, hint: String = "") -> String:
-	var n := hint.strip_edges() if not hint.strip_edges().is_empty() else _username_for_peer(peer_id)
+	var n: String = hint.strip_edges()
+	if n.is_empty():
+		n = _username_for_peer(peer_id)
 	if n.is_empty():
 		return "Peer %d" % peer_id
 	return n
@@ -433,10 +466,16 @@ func _on_handshake_fail(reason: String) -> void:
 	_ui.set_status_raw("Handshake failed: %s" % reason)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	var client: Node = _get_client()
 	if client != null and client.is_connecting():
 		_update_ui_state()
+	if _debug and not _current_lobby_id.is_empty() and client != null:
+		_transport_debug_accum += delta
+		if _transport_debug_accum >= 3.0:
+			_transport_debug_accum = 0.0
+			if client.has_method("get_transport_summary"):
+				_demo_log(client.get_transport_summary())
 
 
 func _on_websocket_opened() -> void:
@@ -493,7 +532,7 @@ func _on_refresh_pressed() -> void:
 
 func _on_lobby_created(lobby_id: String, members: Array, passcode: String = "") -> void:
 	_current_lobby_id = lobby_id
-	_current_members = members
+	_current_members = _normalize_members(members)
 	if passcode.is_empty():
 		_ui.current_lobby_label.text = "Lobby: %s · share ID" % lobby_id
 		_ui.append_log("[Lobby created] %s\n" % lobby_id)
@@ -508,7 +547,7 @@ func _on_lobby_created(lobby_id: String, members: Array, passcode: String = "") 
 
 func _on_lobby_joined(lobby_id: String, members: Array) -> void:
 	_current_lobby_id = lobby_id
-	_current_members = members
+	_current_members = _normalize_members(members)
 	_ui.current_lobby_label.text = "Lobby: %s" % lobby_id
 	_refresh_members_list()
 	_ui.append_log("[Lobby joined] %s\n" % lobby_id)
@@ -529,10 +568,10 @@ func _on_lobby_left(lobby_id: String) -> void:
 	_ui.leave_lobby_session()
 
 
-func _on_lobby_member_joined(lobby_id: String, peer_id: int, username: String) -> void:
+func _on_lobby_member_joined(lobby_id: String, peer_id: int, username: String, capability: int) -> void:
 	if lobby_id != _current_lobby_id:
 		return
-	_current_members.append({"peer_id": peer_id, "username": username})
+	_current_members.append(_member_dict(peer_id, username, capability))
 	_refresh_members_list()
 	_ensure_remote_avatar(peer_id, username)
 
@@ -570,9 +609,13 @@ func _refresh_members_list() -> void:
 	var lines: Array = []
 	for m in _current_members:
 		if m is Dictionary:
-			var pid: int = int(m.get("peer_id", 0))
-			var uname: String = m.get("username", "")
-			lines.append("%d — %s" % [pid, uname])
+			var d: Dictionary = m
+			var pid: int = int(d.get("peer_id", 0))
+			var uname: String = str(d.get("username", "")).strip_edges()
+			if uname.is_empty():
+				lines.append("#%d (no name)" % pid)
+			else:
+				lines.append("%s · #%d" % [uname, pid])
 	_ui.refresh_members_items(lines)
 
 

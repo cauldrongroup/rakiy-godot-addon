@@ -100,6 +100,17 @@ func try_send_p2p(target_peer_id: int, channel: int, reliable: bool, payload: Va
 func try_deliver_incoming(_from_peer_id: int, _channel: int, _reliable: bool, _payload: Variant) -> bool:
 	return false
 
+
+func count_open_data_channels() -> int:
+	var n := 0
+	for pid in _by_peer.keys():
+		var st: Dictionary = _by_peer[pid]
+		var dc: WebRTCDataChannel = st.get("dc", null)
+		if dc != null and dc.get_ready_state() == WebRTCDataChannel.STATE_OPEN:
+			n += 1
+	return n
+
+
 func _webrtc_available() -> bool:
 	return ClassDB.class_exists("WebRTCPeerConnection")
 
@@ -124,8 +135,11 @@ func _sync_members(members: Array) -> void:
 		return
 	var want := {}
 	for m in members:
-		var pid: int = int(m.peer_id)
-		var cap: int = int(m.capability)
+		if m is not Dictionary:
+			continue
+		var md: Dictionary = m
+		var pid: int = int(md.get("peer_id", -1))
+		var cap: int = int(md.get("capability", 0))
 		if pid == _local_id:
 			continue
 		want[pid] = cap
@@ -255,6 +269,7 @@ func _on_dc_message(remote_id: int, message: Variant) -> void:
 	var rel := raw[2] != 0
 	var body := raw.slice(3)
 	if _client:
+		_client.record_p2p_game_inbound()
 		_client.data_received.emit(remote_id, ch, rel, body)
 
 func _send_sig(remote_id: int, json_txt: String) -> void:

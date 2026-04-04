@@ -37,6 +37,14 @@ var _socket_open_emitted: bool = false
 var _unreliable_window_start: float = 0.0
 var _unreliable_sent_in_window: int = 0
 
+## Counters for demo/debug: game payloads only (not WebRTC signaling on the relay).
+var _stat_p2p_game_out: int = 0
+var _stat_p2p_game_in: int = 0
+var _stat_relay_game_out: int = 0
+var _stat_relay_game_in: int = 0
+var _stat_relay_sig_out: int = 0
+var _stat_relay_sig_in: int = 0
+
 func _ready() -> void:
 	set_process(true)
 
@@ -83,6 +91,52 @@ func disconnect_from_host() -> void:
 	_pending_handshake = false
 	_socket_open_emitted = false
 	_ws_state_prev = -1
+	_reset_transport_stats()
+
+func _reset_transport_stats() -> void:
+	_stat_p2p_game_out = 0
+	_stat_p2p_game_in = 0
+	_stat_relay_game_out = 0
+	_stat_relay_game_in = 0
+	_stat_relay_sig_out = 0
+	_stat_relay_sig_in = 0
+
+
+## Incremented from [RakiyP2P] when a game packet arrives over a WebRTC data channel.
+func record_p2p_game_inbound() -> void:
+	_stat_p2p_game_in += 1
+
+
+func get_transport_stats() -> Dictionary:
+	return {
+		"p2p_game_in": _stat_p2p_game_in,
+		"p2p_game_out": _stat_p2p_game_out,
+		"relay_game_in": _stat_relay_game_in,
+		"relay_game_out": _stat_relay_game_out,
+		"relay_sig_in": _stat_relay_sig_in,
+		"relay_sig_out": _stat_relay_sig_out,
+		"handshake_capability": handshake_capability,
+	}
+
+
+func get_transport_summary() -> String:
+	var n_open := 0
+	if _p2p:
+		n_open = _p2p.count_open_data_channels()
+	var st := get_transport_stats()
+	return (
+		"cap=%s · webrtc_dc_open=%d · game P2P in/out %d/%d · game relay in/out %d/%d · signaling relay in/out %d/%d"
+		% [
+			st["handshake_capability"],
+			n_open,
+			st["p2p_game_in"],
+			st["p2p_game_out"],
+			st["relay_game_in"],
+			st["relay_game_out"],
+			st["relay_sig_in"],
+			st["relay_sig_out"],
+		]
+	)
 
 func set_p2p_helper(helper: RakiyP2P) -> void:
 	if _p2p and _p2p != helper:
@@ -212,6 +266,7 @@ func _handle_binary(buf: PackedByteArray) -> void:
 	var reliable := (flags & 1) != 0
 	var is_utf8 := (flags & 2) != 0
 	if channel == RakiyConstants.CHANNEL_SIGNALING and _p2p:
+		_stat_relay_sig_in += 1
 		_p2p.on_signaling_incoming(from_peer, payload, is_utf8)
 		return
 	var out: Variant = payload
@@ -219,6 +274,7 @@ func _handle_binary(buf: PackedByteArray) -> void:
 		out = payload.get_string_from_utf8()
 	if _p2p and _p2p.try_deliver_incoming(from_peer, channel, reliable, out):
 		return
+	_stat_relay_game_in += 1
 	data_received.emit(from_peer, channel, reliable, out)
 
 func _handle_control(buf: PackedByteArray) -> void:
@@ -373,6 +429,7 @@ func send_data(target_peer_id: int, channel: int, reliable: bool, payload: Varia
 		return
 	if _p2p and channel != RakiyConstants.CHANNEL_SIGNALING:
 		if _p2p.try_send_p2p(target_peer_id, channel, reliable, payload):
+			_stat_p2p_game_out += 1
 			return
 	if unreliable_send_rate_cap > 0 and channel == RakiyConstants.CHANNEL_UNRELIABLE_GAME and not reliable:
 		var now := Time.get_ticks_msec() / 1000.0
@@ -413,6 +470,10 @@ func send_data(target_peer_id: int, channel: int, reliable: bool, payload: Varia
 		out.encode_u32(12, pl.size())
 		for i in pl.size():
 			out[16 + i] = pl[i]
+	if channel == RakiyConstants.CHANNEL_SIGNALING:
+		_stat_relay_sig_out += 1
+	else:
+		_stat_relay_game_out += 1
 	_ws.put_packet(out)
 
 func send_lobby_broadcast(channel: int, reliable: bool, payload: Variant) -> void:

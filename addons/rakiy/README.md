@@ -25,9 +25,15 @@ Game traffic prefers **WebRTC data channels** when open; see **Send path** below
 | `rakiy_client.gd` | WebSocket, handshake (`c`: `relay` / `p2p`), binary relay + lobby parsing, `send_data` P2P routing |
 | `rakiy_constants.gd` | Channel IDs, magic numbers, `CHANNEL_SIGNALING` (65534), `TARGET_LOBBY_BROADCAST` (0) |
 | `rakiy_p2p.gd` | WebRTC: STUN/TURN, ICE, data channels; lower `peer_id` is the SDP offerer |
-| `rakiy_log.gd` | Optional integration with a project `GameLog` class; falls back to `print` / `push_*` |
+| `rakiy_log.gd` | Stable API: **`RakiyLog.info` / `warn` / `error`** — uses **`GameLog`** when that global class exists, else **`print` / `push_*`** |
 | `webrtc_native_installer.gd` | Editor helper used by the plugin to extract the official GDExtension zip |
 | `plugin.gd` | Editor: **Project → Tools → Download / update WebRTC native (GitHub latest)** |
+
+### Logging (`GameLog` optional)
+
+All Rakiy scripts use **`RakiyLog` only** (never call `GameLog` directly). On the first log line, **`RakiyLog`** checks **`ClassDB.class_exists("GameLog")`**. If your project includes an addon that registers **`class_name GameLog`** (for example **template-rakiy**’s `addons/game_log`), Rakiy output goes through that system (levels, BBCode, etc.). If not, the same code paths use the engine defaults so **[rakiy-godot-addon](https://github.com/cauldrongroup/rakiy-godot-addon)** stays self-contained.
+
+**Keeping the add-on folder in sync:** Treat **`addons/rakiy/`** as one canonical tree. Copy it between **template-rakiy** and **rakiy-godot-addon** (or merge/rebase) so you can pull upstream updates and push template fixes without maintaining two different implementations.
 
 ## Quick usage
 
@@ -94,4 +100,4 @@ The demo scene **`demo/main.tscn`** logs **`[transport]`** and **`[p2p]`** lines
 2. **Native + native:** Both **`p2p`**, WebRTC extension installed; verify signaling then **`game P2P`** counts and **`webrtc_dc_open`**.
 3. **ICE failure:** Block UDP or bad STUN; data channels may not open; unreliable game is not duplicated on relay when **`p2p`** (see Send path).
 
-Upstream may also track **[rakiy-godot-addon](https://github.com/cauldrongroup/rakiy-godot-addon)**; this monorepo copy aligns with **`multiplayer/protocol.md`**.
+The **template-rakiy** monorepo tracks **[rakiy-godot-addon](https://github.com/cauldrongroup/rakiy-godot-addon)**; its `addons/rakiy` copy aligns with **`multiplayer/protocol.md`** and should stay file-identical aside from normal merges.

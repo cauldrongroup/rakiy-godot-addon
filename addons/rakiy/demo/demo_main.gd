@@ -53,6 +53,11 @@ func _ready() -> void:
 		# Flood guard: one outbound frame per sync tick (broadcast counts as 1); raise if needed.
 		_rc.unreliable_send_rate_cap = 240
 		_rc.unreliable_send_rate_window_sec = 1.0
+		_rc.debug = true
+		# Match public relay expectations: WebSocket traffic is server-mediated (same as web export).
+		_rc.handshake_capability = "relay"
+		if not _rc.debug_log.is_connected(_on_rakiy_debug_log):
+			_rc.debug_log.connect(_on_rakiy_debug_log)
 
 	_RakiyDemoWorldScript.build($World)
 	_connect_signals()
@@ -94,6 +99,10 @@ func _connect_signals() -> void:
 	client.data_received.connect(_on_data_received)
 
 
+func _on_rakiy_debug_log(line: String) -> void:
+	_ui.append_log("[net] %s\n" % line)
+
+
 func _exit_tree() -> void:
 	var client := _get_client()
 	if client == null:
@@ -122,6 +131,8 @@ func _exit_tree() -> void:
 		client.lobby_error.disconnect(_on_lobby_error)
 	if client.data_received.is_connected(_on_data_received):
 		client.data_received.disconnect(_on_data_received)
+	if client.debug_log.is_connected(_on_rakiy_debug_log):
+		client.debug_log.disconnect(_on_rakiy_debug_log)
 
 
 func _physics_process(delta: float) -> void:

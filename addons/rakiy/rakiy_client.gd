@@ -15,6 +15,8 @@ signal lobby_list_received(lobbies: Array)
 signal lobby_member_joined(lobby_id: String, peer_id: int, username: String, capability: int)
 signal lobby_member_left(lobby_id: String, peer_id: int)
 signal lobby_error(reason: String)
+## Emitted when [member debug] is true: connection state, close codes, handshake lines (for in-editor or UI logs).
+signal debug_log(line: String)
 
 @export var debug := false
 ## `relay` for web export; `p2p` for native (default).
@@ -29,6 +31,8 @@ var _peer_id: int = -1
 var _handshaken: bool = false
 var _p2p: RakiyP2P = null
 var _pending_handshake: bool = false
+var _ws_state_prev: int = -1
+var _socket_open_emitted: bool = false
 
 var _unreliable_window_start: float = 0.0
 var _unreliable_sent_in_window: int = 0
@@ -60,14 +64,15 @@ func connect_to_url(url: String, username: String, capability: String = "") -> v
 	_handshaken = false
 	_peer_id = -1
 	_pending_handshake = true
+	_socket_open_emitted = false
+	_ws_state_prev = -1
 	var err := _ws.connect_to_url(url)
-	if debug:
-		print("[Rakiy] connect_to_url err=", err)
+	_dbg("connect_to_url url=%s err=%s (%s)" % [url, err, error_string(err)])
 	if err != OK:
 		handshake_fail.emit("connect failed: %s" % err)
 		_pending_handshake = false
 		return
-	websocket_opened.emit()
+	_dbg("connect_to_url queued (async); poll until STATE_OPEN")
 
 func disconnect_from_host() -> void:
 	if _p2p:
@@ -76,6 +81,8 @@ func disconnect_from_host() -> void:
 	_handshaken = false
 	_peer_id = -1
 	_pending_handshake = false
+	_socket_open_emitted = false
+	_ws_state_prev = -1
 
 func set_p2p_helper(helper: RakiyP2P) -> void:
 	if _p2p and _p2p != helper:
@@ -87,10 +94,32 @@ func set_p2p_helper(helper: RakiyP2P) -> void:
 func poll() -> void:
 	_ws.poll()
 	var st := _ws.get_ready_state()
+	if debug and st != _ws_state_prev:
+		var idle_closed: bool = (
+			st == WebSocketPeer.STATE_CLOSED
+			and _ws_state_prev < 0
+			and not _pending_handshake
+			and not _handshaken
+			and not _socket_open_emitted
+		)
+		if not idle_closed:
+			_dbg("ws state %s -> %s" % [_ws_state_name(_ws_state_prev), _ws_state_name(st)])
+		_ws_state_prev = st
 	if st == WebSocketPeer.STATE_CLOSED:
-		if _handshaken or _pending_handshake:
+		var had_link: bool = _handshaken or _pending_handshake or _socket_open_emitted
+		if had_link:
+			var cc := _ws.get_close_code()
+			var cr := _ws.get_close_reason()
+			_dbg("ws closed code=%d reason=%s" % [cc, cr])
+			_handshaken = false
+			_peer_id = -1
+			_pending_handshake = false
+			_socket_open_emitted = false
 			disconnected.emit()
 		return
+	if st == WebSocketPeer.STATE_OPEN and not _socket_open_emitted:
+		_socket_open_emitted = true
+		websocket_opened.emit()
 	if st == WebSocketPeer.STATE_OPEN and _pending_handshake and not _handshaken:
 		_send_handshake()
 		_pending_handshake = false
@@ -111,13 +140,15 @@ func _send_handshake() -> void:
 	var o := {"t": "hs", "v": RakiyConstants.PROTOCOL_VERSION, "u": _username}
 	if handshake_capability == "relay" or handshake_capability == "p2p":
 		o["c"] = handshake_capability
-	if debug:
-		print("[Rakiy] handshake ", o)
+	_dbg("sending handshake %s" % JSON.stringify(o))
 	_ws.send_text(JSON.stringify(o))
 
 func _handle_text(t: String) -> void:
+	var preview: String = t if t.length() <= 240 else t.substr(0, 240) + "…"
+	_dbg("text in: %s" % preview)
 	var j = JSON.new()
 	if j.parse(t) != OK:
+		_dbg("text JSON parse failed")
 		return
 	var d = j.data
 	if typeof(d) != TYPE_DICTIONARY:
@@ -125,10 +156,12 @@ func _handle_text(t: String) -> void:
 	if d.get("t") == "ok" and d.has("p"):
 		_peer_id = int(d["p"])
 		_handshaken = true
+		_dbg("handshake ok peer_id=%d" % _peer_id)
 		if _p2p:
 			_p2p.on_handshake_ok(_peer_id)
 		handshake_ok.emit(_peer_id)
 	elif d.get("t") == "fail":
+		_dbg("handshake fail: %s" % str(d.get("r", "fail")))
 		handshake_fail.emit(str(d.get("r", "fail")))
 
 func _handle_binary(buf: PackedByteArray) -> void:
@@ -375,3 +408,24 @@ func send_lobby_broadcast(channel: int, reliable: bool, payload: Variant) -> voi
 
 func flush_pending_sends() -> void:
 	pass
+
+
+func _dbg(line: String) -> void:
+	if not debug:
+		return
+	print("[Rakiy] ", line)
+	debug_log.emit(line)
+
+
+func _ws_state_name(s: int) -> String:
+	if s < 0:
+		return "—"
+	if s == WebSocketPeer.STATE_CONNECTING:
+		return "CONNECTING"
+	if s == WebSocketPeer.STATE_OPEN:
+		return "OPEN"
+	if s == WebSocketPeer.STATE_CLOSING:
+		return "CLOSING"
+	if s == WebSocketPeer.STATE_CLOSED:
+		return "CLOSED"
+	return "state(%d)" % s

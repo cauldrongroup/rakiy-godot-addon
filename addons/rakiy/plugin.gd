@@ -25,7 +25,7 @@ func _exit_tree() -> void:
 
 func _on_menu_webrtc() -> void:
 	if _phase != "":
-		push_warning("Rakiy: WebRTC download already in progress.")
+		RakiyLog.warn("Rakiy", "WebRTC download already in progress.")
 		return
 	_phase = "api"
 	var err := _http.request(
@@ -34,7 +34,7 @@ func _on_menu_webrtc() -> void:
 	)
 	if err != OK:
 		_phase = ""
-		push_error("Rakiy: GitHub API request failed: %s" % error_string(err))
+		RakiyLog.error("Rakiy", "GitHub API request failed: %s" % error_string(err))
 
 
 func _on_http_request_completed(
@@ -46,12 +46,12 @@ func _on_http_request_completed(
 	if _phase == "api":
 		if result != HTTPRequest.RESULT_SUCCESS or response_code != 200:
 			_phase = ""
-			push_error("Rakiy: GitHub API failed (result=%s, HTTP %s)" % [result, response_code])
+			RakiyLog.error("Rakiy", "GitHub API failed (result=%s, HTTP %s)" % [result, response_code])
 			return
 		var j := JSON.new()
 		if j.parse(body.get_string_from_utf8()) != OK:
 			_phase = ""
-			push_error("Rakiy: Invalid JSON from GitHub API.")
+			RakiyLog.error("Rakiy", "Invalid JSON from GitHub API.")
 			return
 		var data: Variant = j.data
 		if typeof(data) != TYPE_DICTIONARY:
@@ -60,24 +60,24 @@ func _on_http_request_completed(
 		var url := _pick_extension_zip_url(data as Dictionary)
 		if url.is_empty():
 			_phase = ""
-			push_error("Rakiy: Latest release has no suitable godot-extension-webrtc zip asset.")
+			RakiyLog.error("Rakiy", "Latest release has no suitable godot-extension-webrtc zip asset.")
 			return
 		_phase = "zip"
 		var err := _http.request(url)
 		if err != OK:
 			_phase = ""
-			push_error("Rakiy: Could not start download: %s" % error_string(err))
+			RakiyLog.error("Rakiy", "Could not start download: %s" % error_string(err))
 		return
 
 	if _phase == "zip":
 		_phase = ""
 		if result != HTTPRequest.RESULT_SUCCESS or response_code != 200:
-			push_error("Rakiy: Download failed (result=%s, HTTP %s)" % [result, response_code])
+			RakiyLog.error("Rakiy", "Download failed (result=%s, HTTP %s)" % [result, response_code])
 			return
 		var zip_path := "user://rakiy_godot_extension_webrtc.zip"
 		var wf := FileAccess.open(zip_path, FileAccess.WRITE)
 		if wf == null:
-			push_error("Rakiy: Cannot write %s" % zip_path)
+			RakiyLog.error("Rakiy", "Cannot write %s" % zip_path)
 			return
 		wf.store_buffer(body)
 		wf.close()
@@ -85,9 +85,12 @@ func _on_http_request_completed(
 		_INSTALLER.delete_addons_webrtc()
 		var ex := _INSTALLER.extract_zip_to_addons_webrtc(abs_zip)
 		if ex != OK:
-			push_error("Rakiy: Extract failed: %s" % error_string(ex))
+			RakiyLog.error("Rakiy", "Extract failed: %s" % error_string(ex))
 			return
-		print("Rakiy: WebRTC native GDExtension installed under res://addons/webrtc/ — rescanning filesystem.")
+		RakiyLog.info(
+			"Rakiy",
+			"WebRTC native GDExtension installed under res://addons/webrtc/ — rescanning filesystem."
+		)
 		get_editor_interface().get_resource_filesystem().scan()
 
 

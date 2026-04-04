@@ -55,8 +55,9 @@ func _on_client_disconnected() -> void:
 func on_handshake_ok(peer_id: int) -> void:
 	_local_id = peer_id
 	if not _webrtc_available() and _client != null and _client.get("handshake_capability") == "p2p":
-		push_warning(
-			"RakiyP2P: WebRTCPeerConnection is missing from this Godot build; "
+		RakiyLog.warn(
+			"RakiyP2P",
+			"WebRTCPeerConnection is missing from this Godot build; "
 			+ "signaling may run but data channels will not open — use a build with the WebRTC module."
 		)
 
@@ -242,8 +243,9 @@ func _sync_members(members: Array) -> void:
 	if not _webrtc_available():
 		if not _webrtc_missing_warned:
 			_webrtc_missing_warned = true
-			push_warning(
-				"RakiyP2P: WebRTCPeerConnection is not available. "
+			RakiyLog.warn(
+				"RakiyP2P",
+				"WebRTCPeerConnection is not available. "
 				+ "Install the webrtc-native GDExtension (Rakiy: Project → Tools → Download / update WebRTC native) "
 				+ "or use a Godot binary that includes the WebRTC module — otherwise signaling stays at 0 and only relay is used."
 			)
@@ -350,7 +352,7 @@ func _finalize_local_desc(remote_id: int, type_str: String, sdp: String) -> void
 	if serr != OK:
 		if _client.has_method("log_p2p"):
 			_client.log_p2p("set_local_description failed peer %d: %s" % [remote_id, error_string(serr)])
-		push_warning("RakiyP2P: set_local_description failed: %s" % error_string(serr))
+		RakiyLog.warn("RakiyP2P", "set_local_description failed: %s" % error_string(serr))
 		return
 	_send_sig(remote_id, JSON.stringify({"t": type_str.to_lower(), "sdp": sdp}))
 
@@ -385,7 +387,7 @@ func _handle_offer(from_peer_id: int, sdp: String) -> void:
 	if rerr != OK:
 		if _client.has_method("log_p2p"):
 			_client.log_p2p("set_remote_description(offer) failed peer %d: %s" % [from_peer_id, error_string(rerr)])
-		push_warning("RakiyP2P: set_remote_description(offer) failed: %s" % error_string(rerr))
+		RakiyLog.warn("RakiyP2P", "set_remote_description(offer) failed: %s" % error_string(rerr))
 		_close_peer(from_peer_id)
 		return
 	if pc.has_method("create_answer"):
@@ -393,7 +395,7 @@ func _handle_offer(from_peer_id: int, sdp: String) -> void:
 		if aerr != OK:
 			if _client.has_method("log_p2p"):
 				_client.log_p2p("create_answer failed peer %d: %s" % [from_peer_id, error_string(aerr)])
-			push_warning("RakiyP2P: create_answer failed: %s" % error_string(aerr))
+			RakiyLog.warn("RakiyP2P", "create_answer failed: %s" % error_string(aerr))
 			_close_peer(from_peer_id)
 
 func _bind_remote_dc(remote_id: int, ch: WebRTCDataChannel) -> void:
@@ -412,7 +414,7 @@ func _handle_answer(from_peer_id: int, sdp: String) -> void:
 	if rerr != OK:
 		if _client.has_method("log_p2p"):
 			_client.log_p2p("set_remote_description(answer) failed peer %d: %s" % [from_peer_id, error_string(rerr)])
-		push_warning("RakiyP2P: set_remote_description(answer) failed: %s" % error_string(rerr))
+		RakiyLog.warn("RakiyP2P", "set_remote_description(answer) failed: %s" % error_string(rerr))
 
 func _handle_candidate(from_peer_id: int, media: String, index: int, cand_line: String) -> void:
 	var st: Dictionary = _by_peer.get(from_peer_id, {})

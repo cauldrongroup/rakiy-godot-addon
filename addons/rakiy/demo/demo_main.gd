@@ -25,7 +25,7 @@ var _debug := true
 
 func _demo_log(msg: String) -> void:
 	if _debug:
-		print("[Rakiy Demo] ", msg)
+		RakiyLog.info("RakiyDemo", msg)
 
 
 func _member_dict(peer_id: int, username: String, capability: int = 0) -> Dictionary:
@@ -355,7 +355,7 @@ func _display_name_for_peer(peer_id: int, hint: String = "") -> String:
 	if n.is_empty():
 		n = _username_for_peer(peer_id)
 	if n.is_empty():
-		return "Peer %d" % peer_id
+		return "Player"
 	return n
 
 
@@ -633,15 +633,21 @@ func _on_lobby_error(reason: String) -> void:
 
 func _refresh_members_list() -> void:
 	var lines: Array = []
+	var client := _get_client()
+	var self_id: int = -1
+	if client != null:
+		self_id = client.get_peer_id()
 	for m in _current_members:
 		if m is Dictionary:
 			var d: Dictionary = m
 			var pid: int = int(d.get("peer_id", 0))
 			var uname: String = str(d.get("username", "")).strip_edges()
 			if uname.is_empty():
-				lines.append("#%d (no name)" % pid)
+				uname = "(no name)"
+			if self_id >= 0 and pid == self_id:
+				lines.append("%s - you" % uname)
 			else:
-				lines.append("%s · #%d" % [uname, pid])
+				lines.append(uname)
 	_ui.refresh_members_items(lines)
 
 

@@ -548,7 +548,7 @@ func _looks_like_handshake_json(s: String) -> bool:
 func _dbg(line: String) -> void:
 	if not debug:
 		return
-	print("[Rakiy] ", line)
+	RakiyLog.info("Rakiy", line)
 	debug_log.emit(line)
 
 

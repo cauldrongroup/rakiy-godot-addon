@@ -25,6 +25,7 @@ Game traffic prefers **WebRTC data channels** when open; see **Send path** below
 | `rakiy_client.gd` | WebSocket, handshake (`c`: `relay` / `p2p`), binary relay + lobby parsing, `send_data` P2P routing |
 | `rakiy_constants.gd` | Channel IDs, magic numbers, `CHANNEL_SIGNALING` (65534), `TARGET_LOBBY_BROADCAST` (0) |
 | `rakiy_p2p.gd` | WebRTC: STUN/TURN, ICE, data channels; lower `peer_id` is the SDP offerer |
+| `rakiy_log.gd` | Optional integration with a project `GameLog` class; falls back to `print` / `push_*` |
 | `webrtc_native_installer.gd` | Editor helper used by the plugin to extract the official GDExtension zip |
 | `plugin.gd` | Editor: **Project → Tools → Download / update WebRTC native (GitHub latest)** |
 

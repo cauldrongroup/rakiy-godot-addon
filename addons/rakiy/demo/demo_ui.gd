@@ -27,11 +27,10 @@ class_name DemoUI
 @onready var send_btn: Button = %SendBtn
 @onready var log_text: TextEdit = %LogText
 @onready var resume_game_btn: Button = %ResumeGameBtn
+@onready var pause_chrome: Control = %PauseChrome
 @onready var pause_dim: ColorRect = $Root/PauseDim
 @onready var bottom_area: Control = $Root/BottomArea
 @onready var center_c: CenterContainer = $Root/BottomArea/CenterC
-
-const _BOTTOM_EXPANDED_TOP := -580.0
 
 ## True after create/join lobby until leave or disconnect.
 var _in_lobby_session: bool = false
@@ -88,18 +87,16 @@ func _on_resume_game_pressed() -> void:
 
 
 func _apply_session_state() -> void:
-	resume_game_btn.visible = _pause_menu_open and _in_lobby_session
+	pause_chrome.visible = _pause_menu_open and _in_lobby_session
 	if not _in_lobby_session:
 		pause_dim.visible = false
 		bottom_area.visible = true
 		center_c.visible = true
-		bottom_area.offset_top = _BOTTOM_EXPANDED_TOP
 		return
 	if _pause_menu_open:
 		pause_dim.visible = true
 		bottom_area.visible = true
 		center_c.visible = true
-		bottom_area.offset_top = _BOTTOM_EXPANDED_TOP
 	else:
 		pause_dim.visible = false
 		bottom_area.visible = false
@@ -126,7 +123,7 @@ func apply_connection_state(
 	if not handshaken:
 		main_tabs.current_tab = 0
 	if handshaken:
-		status_label.text = "Online · peer %d" % peer_id
+		status_label.text = "Online"
 	elif connecting:
 		status_label.text = "Connecting…"
 	elif conn:

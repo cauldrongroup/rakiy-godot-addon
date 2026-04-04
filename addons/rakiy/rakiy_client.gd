@@ -186,10 +186,25 @@ func poll() -> void:
 		if perr != OK:
 			_dbg("ws get_packet_error=%s (after get_packet, is_text=%s)" % [error_string(perr), is_text])
 			continue
+		# CDNs / proxies may use WebSocket TEXT opcode for Rakiy binary (magic RKA…). Always route by magic first.
+		if pkt.size() >= 4:
+			var magic := pkt.decode_u32(0)
+			if (
+				magic == RakiyConstants.CONTROL_MAGIC
+				or magic == RakiyConstants.RELAY_MAGIC_V1
+				or magic == RakiyConstants.RELAY_MAGIC_V2
+			):
+				if debug and is_text:
+					_dbg(
+						"ws TEXT opcode but Rakiy binary magic=0x%X; routing to binary (signaling/control/relay)"
+						% magic
+					)
+				_handle_binary(pkt)
+				continue
 		if is_text:
 			_handle_text(pkt.get_string_from_utf8())
 			continue
-		# Some stacks deliver JSON as binary UTF-8; Godot reports was_string_packet() == false.
+		# Some stacks deliver handshake JSON as binary UTF-8; Godot reports was_string_packet() == false.
 		if not _handshaken and pkt.size() > 0 and pkt.size() <= 8192:
 			var as_text := pkt.get_string_from_utf8()
 			if as_text.length() > 0 and as_text[0] == "{" and _looks_like_handshake_json(as_text):

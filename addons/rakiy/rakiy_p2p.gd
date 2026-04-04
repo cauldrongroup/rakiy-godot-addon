@@ -31,6 +31,11 @@ func attach_client(c: Node) -> void:
 
 func on_handshake_ok(peer_id: int) -> void:
 	_local_id = peer_id
+	if not _webrtc_available() and _client != null and _client.get("handshake_capability") == "p2p":
+		push_warning(
+			"RakiyP2P: WebRTCPeerConnection is missing from this Godot build; "
+			+ "signaling may run but data channels will not open — use a build with the WebRTC module."
+		)
 
 func cleanup() -> void:
 	for pid in _by_peer.keys():

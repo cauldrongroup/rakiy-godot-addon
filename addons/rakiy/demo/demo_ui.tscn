@@ -106,6 +106,14 @@ theme_override_constants/separation = 10
 layout_mode = 2
 alignment = 2
 
+[node name="CollapseHudBtn" type="Button" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/CardTop"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_secondary")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_secondary_h")
+text = "Hide UI"
+tooltip_text = "Hide this panel for full arena view. Press F2 to toggle."
+
 [node name="CardTopSpacer" type="Control" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/CardTop"]
 layout_mode = 2
 size_flags_horizontal = 3
@@ -155,7 +163,7 @@ text = "Rakiy"
 layout_mode = 2
 theme_override_colors/font_color = Color(0.55, 0.6, 0.68, 1)
 theme_override_font_sizes/font_size = 11
-text = "WASD · Space · Look · Esc"
+text = "WASD · Space · Look · Esc · F2 hide UI"
 
 [node name="UrlRow" type="VBoxContainer" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Connect/ConnectVBox"]
 layout_mode = 2
@@ -396,3 +404,29 @@ layout_mode = 2
 size_flags_vertical = 3
 editable = false
 wrap_mode = 1
+
+[node name="CollapsedStrip" type="PanelContainer" parent="Root/BottomArea"]
+visible = false
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = -52.0
+offset_right = -16.0
+offset_bottom = -16.0
+grow_horizontal = 2
+theme = ExtResource("2_theme")
+
+[node name="CollapsedInner" type="HBoxContainer" parent="Root/BottomArea/CollapsedStrip"]
+layout_mode = 2
+alignment = 1
+
+[node name="ShowHudBtn" type="Button" parent="Root/BottomArea/CollapsedStrip/CollapsedInner"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_secondary")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_secondary_h")
+text = "Show menu"
+tooltip_text = "Bring the Rakiy panel back (F2 to toggle)."

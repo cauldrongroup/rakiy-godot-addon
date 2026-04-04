@@ -26,6 +26,57 @@ class_name DemoUI
 @onready var send_binary_cb: CheckBox = %SendBinaryCb
 @onready var send_btn: Button = %SendBtn
 @onready var log_text: TextEdit = %LogText
+@onready var collapse_hud_btn: Button = %CollapseHudBtn
+@onready var show_hud_btn: Button = %ShowHudBtn
+@onready var bottom_area: Control = $Root/BottomArea
+@onready var center_c: CenterContainer = $Root/BottomArea/CenterC
+@onready var collapsed_strip: Control = $Root/BottomArea/CollapsedStrip
+
+const _BOTTOM_EXPANDED_TOP := -580.0
+const _BOTTOM_COLLAPSED_TOP := -68.0
+
+var _hud_collapsed: bool = false
+
+
+func _ready() -> void:
+	set_process_unhandled_input(true)
+	collapse_hud_btn.pressed.connect(_on_collapse_hud_pressed)
+	show_hud_btn.pressed.connect(_on_expand_hud_pressed)
+
+
+func is_hud_collapsed() -> bool:
+	return _hud_collapsed
+
+
+func set_hud_collapsed(collapsed: bool) -> void:
+	_hud_collapsed = collapsed
+	center_c.visible = not collapsed
+	collapsed_strip.visible = collapsed
+	bottom_area.offset_top = _BOTTOM_COLLAPSED_TOP if collapsed else _BOTTOM_EXPANDED_TOP
+	collapse_hud_btn.visible = not collapsed
+
+
+func _on_collapse_hud_pressed() -> void:
+	set_hud_collapsed(true)
+
+
+func _on_expand_hud_pressed() -> void:
+	set_hud_collapsed(false)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not event is InputEventKey:
+		return
+	var e := event as InputEventKey
+	if not e.pressed or e.echo:
+		return
+	if e.keycode != KEY_F2:
+		return
+	var foc: Control = get_viewport().gui_get_focus_owner() as Control
+	if foc and (foc is LineEdit or foc is TextEdit):
+		return
+	set_hud_collapsed(not _hud_collapsed)
+	get_viewport().set_input_as_handled()
 
 
 func apply_connection_state(

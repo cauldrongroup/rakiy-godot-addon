@@ -12,12 +12,12 @@ var turn_servers: PackedStringArray = PackedStringArray()
 var turn_username: String = ""
 var turn_password: String = ""
 
-var _client: RakiyClient = null
+var _client: Node = null
 var _local_id: int = -1
 ## peer_id -> state Dictionary
 var _by_peer: Dictionary = {}
 
-func attach_client(c: RakiyClient) -> void:
+func attach_client(c: Node) -> void:
 	if _client and _client != c:
 		cleanup()
 	_client = c
@@ -75,8 +75,7 @@ func on_signaling_incoming(from_peer_id: int, payload: PackedByteArray, is_utf8:
 			from_peer_id,
 			str(d.get("media", "")),
 			int(d.get("i", 0)),
-			str(d.get("name", "")),
-			str(d.get("s", "")),
+			str(d.get("s", d.get("name", ""))),
 		)
 
 func try_send_p2p(target_peer_id: int, channel: int, reliable: bool, payload: Variant) -> bool:
@@ -170,11 +169,11 @@ func _start_as_offerer(remote_id: int) -> void:
 		func(t: String, sdp: String): _finalize_local_desc(remote_id, t, sdp)
 	)
 	pc.ice_candidate_created.connect(
-		func(media: String, index: int, pname: String, sdp: String):
+		func(media: String, index: int, cand_line: String):
 			_send_sig(
 				remote_id,
 				JSON.stringify(
-					{"t": "candidate", "media": media, "i": index, "name": pname, "s": sdp}
+					{"t": "candidate", "media": media, "i": index, "s": cand_line}
 				)
 			)
 	)
@@ -206,11 +205,11 @@ func _handle_offer(from_peer_id: int, sdp: String) -> void:
 		func(t: String, ans: String): _finalize_local_desc(from_peer_id, t, ans)
 	)
 	pc.ice_candidate_created.connect(
-		func(media: String, index: int, pname: String, cand: String):
+		func(media: String, index: int, cand_line: String):
 			_send_sig(
 				from_peer_id,
 				JSON.stringify(
-					{"t": "candidate", "media": media, "i": index, "name": pname, "s": cand}
+					{"t": "candidate", "media": media, "i": index, "s": cand_line}
 				)
 			)
 	)
@@ -237,12 +236,12 @@ func _handle_answer(from_peer_id: int, sdp: String) -> void:
 		return
 	pc.set_remote_description("answer", sdp)
 
-func _handle_candidate(from_peer_id: int, media: String, index: int, pname: String, sdp: String) -> void:
+func _handle_candidate(from_peer_id: int, media: String, index: int, cand_line: String) -> void:
 	var st: Dictionary = _by_peer.get(from_peer_id, {})
 	var pc: WebRTCPeerConnection = st.get("pc", null)
 	if pc == null:
 		return
-	pc.add_ice_candidate(media, index, pname, sdp)
+	pc.add_ice_candidate(media, index, cand_line)
 
 func _on_dc_message(remote_id: int, message: Variant) -> void:
 	var raw: PackedByteArray

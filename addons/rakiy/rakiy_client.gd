@@ -1,7 +1,7 @@
 extends Node
-class_name RakiyClient
 
 ## Rakiy WebSocket client: relay, lobbies, optional [member RakiyP2P] for native WebRTC.
+## Register as Autoload (e.g. RakiyClient). This script has no global class_name; use preload for static typing in other scripts.
 
 signal websocket_opened
 signal disconnected
@@ -41,6 +41,9 @@ func _process(_delta: float) -> void:
 
 func is_connected_to_host() -> bool:
 	return _ws.get_ready_state() == WebSocketPeer.STATE_OPEN
+
+func is_connecting() -> bool:
+	return _ws.get_ready_state() == WebSocketPeer.STATE_CONNECTING
 
 func is_handshaken() -> bool:
 	return _handshaken
@@ -105,7 +108,7 @@ func poll() -> void:
 		_p2p.poll()
 
 func _send_handshake() -> void:
-	var o := {"t": "hs", "v": 2, "u": _username}
+	var o := {"t": "hs", "v": RakiyConstants.PROTOCOL_VERSION, "u": _username}
 	if handshake_capability == "relay" or handshake_capability == "p2p":
 		o["c"] = handshake_capability
 	if debug:
@@ -204,14 +207,14 @@ func _handle_control(buf: PackedByteArray) -> void:
 			var uname := buf.slice(o, o + ulen).get_string_from_utf8()
 			o += ulen
 			members.append({"peer_id": pid, "username": uname, "capability": cap})
-		var pass := ""
+		var creator_passcode := ""
 		if op == 0x10 and o < buf.size():
 			var pclen := buf[o]
 			o += 1
 			if buf.size() >= o + pclen:
-				pass = buf.slice(o, o + pclen).get_string_from_utf8()
+				creator_passcode = buf.slice(o, o + pclen).get_string_from_utf8()
 		if op == 0x10:
-			lobby_created.emit(lobby_id, members, pass)
+			lobby_created.emit(lobby_id, members, creator_passcode)
 		else:
 			lobby_joined.emit(lobby_id, members)
 	elif op == 0x12:

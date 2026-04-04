@@ -1,0 +1,398 @@
+[gd_scene load_steps=7 format=3 uid="uid://c8rakiydemoui"]
+
+[ext_resource type="Script" path="res://addons/rakiy/demo/demo_ui.gd" id="1_script"]
+[ext_resource type="Theme" path="res://addons/rakiy/demo/demo_theme.tres" id="2_theme"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_status_pill"]
+bg_color = Color(0.1, 0.14, 0.2, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.28, 0.36, 0.48, 1)
+corner_radius_top_left = 99
+corner_radius_top_right = 99
+corner_radius_bottom_right = 99
+corner_radius_bottom_left = 99
+content_margin_left = 16
+content_margin_top = 8
+content_margin_right = 16
+content_margin_bottom = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_secondary"]
+bg_color = Color(0.16, 0.18, 0.22, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.3, 0.34, 0.42, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+content_margin_left = 14
+content_margin_top = 8
+content_margin_right = 14
+content_margin_bottom = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_secondary_h"]
+bg_color = Color(0.22, 0.25, 0.3, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.38, 0.42, 0.5, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+content_margin_left = 14
+content_margin_top = 8
+content_margin_right = 14
+content_margin_bottom = 8
+
+[node name="DemoUI" type="CanvasLayer"]
+layer = 10
+script = ExtResource("1_script")
+
+[node name="Root" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="BottomArea" type="Control" parent="Root"]
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = -580.0
+offset_right = -16.0
+offset_bottom = -16.0
+grow_horizontal = 2
+mouse_filter = 2
+
+[node name="CenterC" type="CenterContainer" parent="Root/BottomArea"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="MainCard" type="PanelContainer" parent="Root/BottomArea/CenterC"]
+layout_mode = 2
+custom_minimum_size = Vector2(680, 360)
+clip_contents = false
+theme = ExtResource("2_theme")
+
+[node name="CardMargin" type="MarginContainer" parent="Root/BottomArea/CenterC/MainCard"]
+layout_mode = 2
+theme_override_constants/margin_left = 18
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 22
+theme_override_constants/margin_bottom = 16
+
+[node name="CardStack" type="VBoxContainer" parent="Root/BottomArea/CenterC/MainCard/CardMargin"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="CardTop" type="HBoxContainer" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack"]
+layout_mode = 2
+alignment = 2
+
+[node name="CardTopSpacer" type="Control" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/CardTop"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="StatusPill" type="PanelContainer" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/CardTop"]
+layout_mode = 2
+mouse_filter = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_status_pill")
+
+[node name="StatusLabel" type="Label" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/CardTop/StatusPill"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(200, 0)
+theme_override_colors/font_color = Color(0.88, 0.91, 0.95, 1)
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+autowrap_mode = 3
+text = "Offline"
+
+[node name="MainTabs" type="TabContainer" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+clip_contents = false
+theme_override_constants/side_margin = 4
+theme_override_constants/outline_size = 0
+all_tabs_in_front = true
+
+[node name="Connect" type="MarginContainer" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs"]
+layout_mode = 2
+theme_override_constants/margin_left = 4
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 4
+theme_override_constants/margin_bottom = 8
+
+[node name="ConnectVBox" type="VBoxContainer" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Connect"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Wordmark" type="Label" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Connect/ConnectVBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.45, 0.92, 0.96, 1)
+theme_override_font_sizes/font_size = 20
+text = "Rakiy"
+
+[node name="ControlsHint" type="Label" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Connect/ConnectVBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.55, 0.6, 0.68, 1)
+theme_override_font_sizes/font_size = 11
+text = "WASD · Space · Look · Esc"
+
+[node name="UrlRow" type="VBoxContainer" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Connect/ConnectVBox"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="UrlCaption" type="Label" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Connect/ConnectVBox/UrlRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.55, 0.58, 0.64, 1)
+theme_override_font_sizes/font_size = 12
+text = "Relay URL"
+
+[node name="UrlEdit" type="LineEdit" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Connect/ConnectVBox/UrlRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "wss://rakiy-api.mineperial.com/"
+placeholder_text = "ws:// or wss://"
+
+[node name="UserRow" type="VBoxContainer" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Connect/ConnectVBox"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="UserCaption" type="Label" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Connect/ConnectVBox/UserRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.55, 0.58, 0.64, 1)
+theme_override_font_sizes/font_size = 12
+text = "Display name"
+
+[node name="UsernameEdit" type="LineEdit" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Connect/ConnectVBox/UserRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Player1"
+placeholder_text = "Shown to other players"
+
+[node name="ConnRow" type="HBoxContainer" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Connect/ConnectVBox"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="ConnectBtn" type="Button" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Connect/ConnectVBox/ConnRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Connect"
+
+[node name="DisconnectBtn" type="Button" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Connect/ConnectVBox/ConnRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_secondary")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_secondary_h")
+text = "Disconnect"
+
+[node name="Lobby" type="ScrollContainer" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs"]
+layout_mode = 2
+horizontal_scroll_mode = 0
+
+[node name="LobbyVBox" type="VBoxContainer" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Lobby"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/margin_left = 4
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 4
+theme_override_constants/margin_bottom = 8
+theme_override_constants/separation = 12
+
+[node name="LobbyCol" type="VBoxContainer" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Lobby/LobbyVBox"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="LobbyNameEdit" type="LineEdit" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Lobby/LobbyVBox/LobbyCol"]
+unique_name_in_owner = true
+layout_mode = 2
+placeholder_text = "Lobby label (optional)"
+
+[node name="CreateTools" type="HBoxContainer" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Lobby/LobbyVBox/LobbyCol"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="MaxPlayersSpin" type="SpinBox" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Lobby/LobbyVBox/LobbyCol/CreateTools"]
+unique_name_in_owner = true
+layout_mode = 2
+min_value = 2.0
+max_value = 16.0
+value = 4.0
+
+[node name="PrivateLobbyCb" type="CheckBox" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Lobby/LobbyVBox/LobbyCol/CreateTools"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Private (hidden + passcode)"
+tooltip_text = "Not listed publicly; server assigns a short passcode."
+
+[node name="CreateBtn" type="Button" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Lobby/LobbyVBox/LobbyCol/CreateTools"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Create"
+
+[node name="LobbyIdEdit" type="LineEdit" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Lobby/LobbyVBox/LobbyCol"]
+unique_name_in_owner = true
+layout_mode = 2
+placeholder_text = "Lobby ID to join"
+
+[node name="JoinPasscodeEdit" type="LineEdit" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Lobby/LobbyVBox/LobbyCol"]
+unique_name_in_owner = true
+layout_mode = 2
+placeholder_text = "Passcode (private lobbies)"
+
+[node name="JoinActions" type="HBoxContainer" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Lobby/LobbyVBox/LobbyCol"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="JoinBtn" type="Button" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Lobby/LobbyVBox/LobbyCol/JoinActions"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Join"
+
+[node name="LeaveBtn" type="Button" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Lobby/LobbyVBox/LobbyCol/JoinActions"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_secondary")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_secondary_h")
+text = "Leave"
+
+[node name="RefreshBtn" type="Button" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Lobby/LobbyVBox/LobbyCol/JoinActions"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_secondary")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_secondary_h")
+text = "Refresh list"
+
+[node name="LobbyMeta" type="HBoxContainer" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Lobby/LobbyVBox/LobbyCol"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="CurrentLobbyLabel" type="Label" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Lobby/LobbyVBox/LobbyCol/LobbyMeta"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.82, 0.86, 0.92, 1)
+theme_override_font_sizes/font_size = 13
+text = "No lobby"
+autowrap_mode = 3
+
+[node name="CopyLobbyIdBtn" type="Button" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Lobby/LobbyVBox/LobbyCol/LobbyMeta"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_secondary")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_secondary_h")
+text = "Copy ID"
+
+[node name="LobbyMidSep" type="HSeparator" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Lobby/LobbyVBox"]
+layout_mode = 2
+
+[node name="PresenceCol" type="VBoxContainer" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Lobby/LobbyVBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="PresenceHead" type="Label" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Lobby/LobbyVBox/PresenceCol"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.5, 0.88, 0.94, 1)
+theme_override_font_sizes/font_size = 11
+text = "Players"
+
+[node name="MembersList" type="ItemList" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Lobby/LobbyVBox/PresenceCol"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 100)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="PublicHead" type="Label" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Lobby/LobbyVBox/PresenceCol"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.55, 0.58, 0.64, 1)
+theme_override_font_sizes/font_size = 12
+text = "Public"
+
+[node name="LobbyScroll" type="ScrollContainer" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Lobby/LobbyVBox/PresenceCol"]
+layout_mode = 2
+size_flags_vertical = 3
+custom_minimum_size = Vector2(0, 120)
+horizontal_scroll_mode = 0
+
+[node name="LobbyListContainer" type="VBoxContainer" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Lobby/LobbyVBox/PresenceCol/LobbyScroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="Lab" type="MarginContainer" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs"]
+layout_mode = 2
+theme_override_constants/margin_left = 4
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 4
+theme_override_constants/margin_bottom = 8
+
+[node name="LabVBox" type="VBoxContainer" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Lab"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="SendRow" type="HBoxContainer" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Lab/LabVBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="TargetPeerEdit" type="LineEdit" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Lab/LabVBox/SendRow"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(72, 0)
+placeholder_text = "Peer ID"
+
+[node name="MessageEdit" type="LineEdit" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Lab/LabVBox/SendRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "Message…"
+
+[node name="SendBinaryCb" type="CheckBox" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Lab/LabVBox/SendRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Binary"
+tooltip_text = "Send RakiyPack pose delta instead of text."
+
+[node name="SendBtn" type="Button" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Lab/LabVBox/SendRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Send"
+
+[node name="LogLabel" type="Label" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Lab/LabVBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.55, 0.58, 0.64, 1)
+theme_override_font_sizes/font_size = 12
+text = "Event log"
+
+[node name="LogText" type="TextEdit" parent="Root/BottomArea/CenterC/MainCard/CardMargin/CardStack/MainTabs/Lab/LabVBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 140)
+layout_mode = 2
+size_flags_vertical = 3
+editable = false
+wrap_mode = 1

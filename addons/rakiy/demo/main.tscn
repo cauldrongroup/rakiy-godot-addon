@@ -1,6 +1,13 @@
-[gd_scene load_steps=2 format=3 uid="uid://d1g53odrya7gt"]
+[gd_scene load_steps=3 format=3 uid="uid://d1g53odrya7gt"]
 
 [ext_resource type="Script" path="res://addons/rakiy/demo/demo_main.gd" id="1_main"]
+[ext_resource type="PackedScene" uid="uid://c8rakiydemoui" path="res://addons/rakiy/demo/demo_ui.tscn" id="2_ui"]
 
 [node name="DemoMain" type="Node3D"]
 script = ExtResource("1_main")
+
+[node name="World" type="Node3D" parent="."]
+
+[node name="Players" type="Node3D" parent="World"]
+
+[node name="DemoUI" parent="." instance=ExtResource("2_ui")]

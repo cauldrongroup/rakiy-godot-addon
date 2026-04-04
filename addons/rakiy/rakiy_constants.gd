@@ -1,6 +1,9 @@
 class_name RakiyConstants
 extends RefCounted
 
+## Handshake JSON field `v` (must match server; see Rakiy `multiplayer/protocol.md`).
+const PROTOCOL_VERSION := 3
+
 ## Reliable / control-style traffic (project convention).
 const CHANNEL_CONTROL := 0
 const CHANNEL_RELIABLE_GAME := 1

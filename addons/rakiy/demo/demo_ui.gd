@@ -1,6 +1,6 @@
 extends CanvasLayer
 class_name DemoUI
-## Rakiy demo HUD: floating tabbed console (Connect [→] Lobby [→] Lab); status pill on the card. See [code]flowchart.md[/code].
+## Rakiy demo HUD: Connect → Lobby → Lab. In a lobby, UI hides for gameplay; Esc opens pause (same panel + dim).
 
 @onready var main_tabs: TabContainer = %MainTabs
 @onready var url_edit: LineEdit = %UrlEdit
@@ -26,57 +26,83 @@ class_name DemoUI
 @onready var send_binary_cb: CheckBox = %SendBinaryCb
 @onready var send_btn: Button = %SendBtn
 @onready var log_text: TextEdit = %LogText
-@onready var collapse_hud_btn: Button = %CollapseHudBtn
-@onready var show_hud_btn: Button = %ShowHudBtn
+@onready var resume_game_btn: Button = %ResumeGameBtn
+@onready var pause_dim: ColorRect = $Root/PauseDim
 @onready var bottom_area: Control = $Root/BottomArea
 @onready var center_c: CenterContainer = $Root/BottomArea/CenterC
-@onready var collapsed_strip: Control = $Root/BottomArea/CollapsedStrip
 
 const _BOTTOM_EXPANDED_TOP := -580.0
-const _BOTTOM_COLLAPSED_TOP := -68.0
 
-var _hud_collapsed: bool = false
+## True after create/join lobby until leave or disconnect.
+var _in_lobby_session: bool = false
+## True when Esc pause menu is showing (only meaningful if [member _in_lobby_session]).
+var _pause_menu_open: bool = false
 
 
 func _ready() -> void:
-	set_process_unhandled_input(true)
-	collapse_hud_btn.pressed.connect(_on_collapse_hud_pressed)
-	show_hud_btn.pressed.connect(_on_expand_hud_pressed)
+	resume_game_btn.pressed.connect(_on_resume_game_pressed)
 
 
-func is_hud_collapsed() -> bool:
-	return _hud_collapsed
+func enter_lobby_session() -> void:
+	_in_lobby_session = true
+	_pause_menu_open = false
+	_apply_session_state()
 
 
-func set_hud_collapsed(collapsed: bool) -> void:
-	_hud_collapsed = collapsed
-	center_c.visible = not collapsed
-	collapsed_strip.visible = collapsed
-	bottom_area.offset_top = _BOTTOM_COLLAPSED_TOP if collapsed else _BOTTOM_EXPANDED_TOP
-	collapse_hud_btn.visible = not collapsed
+func leave_lobby_session() -> void:
+	_in_lobby_session = false
+	_pause_menu_open = false
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	_apply_session_state()
 
 
-func _on_collapse_hud_pressed() -> void:
-	set_hud_collapsed(true)
+func is_in_lobby_session() -> bool:
+	return _in_lobby_session
 
 
-func _on_expand_hud_pressed() -> void:
-	set_hud_collapsed(false)
+func is_pause_menu_open() -> bool:
+	return _pause_menu_open
 
 
-func _unhandled_input(event: InputEvent) -> void:
-	if not event is InputEventKey:
+func toggle_pause_menu() -> void:
+	if not _in_lobby_session:
 		return
-	var e := event as InputEventKey
-	if not e.pressed or e.echo:
+	_pause_menu_open = not _pause_menu_open
+	if _pause_menu_open:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	else:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	_apply_session_state()
+
+
+func close_pause_menu() -> void:
+	if not _pause_menu_open:
 		return
-	if e.keycode != KEY_F2:
+	_pause_menu_open = false
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	_apply_session_state()
+
+
+func _on_resume_game_pressed() -> void:
+	close_pause_menu()
+
+
+func _apply_session_state() -> void:
+	resume_game_btn.visible = _pause_menu_open and _in_lobby_session
+	if not _in_lobby_session:
+		pause_dim.visible = false
+		bottom_area.visible = true
+		center_c.visible = true
+		bottom_area.offset_top = _BOTTOM_EXPANDED_TOP
 		return
-	var foc: Control = get_viewport().gui_get_focus_owner() as Control
-	if foc and (foc is LineEdit or foc is TextEdit):
-		return
-	set_hud_collapsed(not _hud_collapsed)
-	get_viewport().set_input_as_handled()
+	if _pause_menu_open:
+		pause_dim.visible = true
+		bottom_area.visible = true
+		center_c.visible = true
+		bottom_area.offset_top = _BOTTOM_EXPANDED_TOP
+	else:
+		pause_dim.visible = false
+		bottom_area.visible = false
 
 
 func apply_connection_state(

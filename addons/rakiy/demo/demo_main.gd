@@ -71,6 +71,16 @@ func _ready() -> void:
 	_RakiyDemoWorldScript.build($World)
 	_connect_signals()
 	_update_ui_state()
+	set_process_unhandled_input(true)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not event.is_action_pressed("ui_cancel"):
+		return
+	if _current_lobby_id.is_empty():
+		return
+	_ui.toggle_pause_menu()
+	get_viewport().set_input_as_handled()
 
 
 func _get_client() -> Node:
@@ -407,6 +417,7 @@ func _on_disconnect_pressed() -> void:
 	_refresh_members_list()
 	_update_ui_state()
 	_ui.current_lobby_label.text = "No lobby"
+	_ui.leave_lobby_session()
 
 
 func _on_handshake_ok(_peer_id: int) -> void:
@@ -439,6 +450,7 @@ func _on_disconnected() -> void:
 	_refresh_members_list()
 	_update_ui_state()
 	_ui.current_lobby_label.text = "No lobby"
+	_ui.leave_lobby_session()
 
 
 func _on_create_lobby_pressed() -> void:
@@ -470,6 +482,7 @@ func _on_leave_pressed() -> void:
 	_refresh_members_list()
 	_ui.current_lobby_label.text = "No lobby"
 	_update_ui_state()
+	_ui.leave_lobby_session()
 
 
 func _on_refresh_pressed() -> void:
@@ -490,6 +503,7 @@ func _on_lobby_created(lobby_id: String, members: Array, passcode: String = "") 
 	_ensure_local_player()
 	_sync_remote_roster()
 	_update_ui_state()
+	_ui.enter_lobby_session()
 
 
 func _on_lobby_joined(lobby_id: String, members: Array) -> void:
@@ -501,6 +515,7 @@ func _on_lobby_joined(lobby_id: String, members: Array) -> void:
 	_ensure_local_player()
 	_sync_remote_roster()
 	_update_ui_state()
+	_ui.enter_lobby_session()
 
 
 func _on_lobby_left(lobby_id: String) -> void:
@@ -511,6 +526,7 @@ func _on_lobby_left(lobby_id: String) -> void:
 	_ui.current_lobby_label.text = "No lobby"
 	_ui.append_log("[Lobby left] %s\n" % lobby_id)
 	_update_ui_state()
+	_ui.leave_lobby_session()
 
 
 func _on_lobby_member_joined(lobby_id: String, peer_id: int, username: String) -> void:

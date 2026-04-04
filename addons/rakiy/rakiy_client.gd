@@ -84,7 +84,7 @@ func connect_to_url(url: String, username: String, capability: String = "") -> v
 
 func disconnect_from_host() -> void:
 	if _p2p:
-		_p2p.cleanup()
+		_p2p.reset_peer_sessions()
 	_ws.close()
 	_handshaken = false
 	_peer_id = -1
@@ -455,8 +455,21 @@ func send_data(target_peer_id: int, channel: int, reliable: bool, payload: Varia
 	if not _handshaken:
 		return
 	if _p2p and channel != RakiyConstants.CHANNEL_SIGNALING:
-		if _p2p.try_send_p2p(target_peer_id, channel, reliable, payload):
+		if target_peer_id == RakiyConstants.TARGET_LOBBY_BROADCAST:
+			var n: int = _p2p.try_send_p2p_all(channel, reliable, payload)
+			if n > 0:
+				_stat_p2p_game_out += n
+				return
+		elif _p2p.try_send_p2p(target_peer_id, channel, reliable, payload):
 			_stat_p2p_game_out += 1
+			return
+		# Native `p2p` handshake: do not fall back to the Rakiy relay for unreliable game payloads while
+		# WebRTC data channels are not ready yet — avoids a burst of relay traffic during ICE negotiation.
+		if (
+			handshake_capability == "p2p"
+			and channel == RakiyConstants.CHANNEL_UNRELIABLE_GAME
+			and not reliable
+		):
 			return
 	if unreliable_send_rate_cap > 0 and channel == RakiyConstants.CHANNEL_UNRELIABLE_GAME and not reliable:
 		var now := Time.get_ticks_msec() / 1000.0

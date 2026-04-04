@@ -16,18 +16,41 @@ var _client: Node = null
 var _local_id: int = -1
 ## peer_id -> state Dictionary
 var _by_peer: Dictionary = {}
+var _webrtc_missing_warned: bool = false
+var _relay_only_members_warned: bool = false
+
+## Reconcile P2P peer list with the current lobby roster (call after [method attach_client] if lobby state may already exist).
+func sync_members_from_lobby(members: Array) -> void:
+	_sync_members(members)
+
 
 func attach_client(c: Node) -> void:
+	if _client == c:
+		return
 	if _client and _client != c:
 		cleanup()
 	_client = c
 	if c == null:
 		return
-	c.lobby_created.connect(func(_lid: String, members: Array, _pc: String): _sync_members(members))
-	c.lobby_joined.connect(func(_lid: String, members: Array): _sync_members(members))
+	c.lobby_created.connect(_on_client_lobby_created)
+	c.lobby_joined.connect(_on_client_lobby_joined)
 	c.lobby_member_joined.connect(_on_member_join)
 	c.lobby_member_left.connect(_on_member_left)
-	c.disconnected.connect(cleanup)
+	c.disconnected.connect(_on_client_disconnected)
+
+
+func _on_client_lobby_created(_lid: String, members: Array, _pc: String) -> void:
+	_sync_members(members)
+
+
+func _on_client_lobby_joined(_lid: String, members: Array) -> void:
+	_sync_members(members)
+
+
+## WebSocket closed: tear down peer connections but keep [member _client] so reconnect works.
+func _on_client_disconnected() -> void:
+	reset_peer_sessions()
+
 
 func on_handshake_ok(peer_id: int) -> void:
 	_local_id = peer_id
@@ -37,12 +60,37 @@ func on_handshake_ok(peer_id: int) -> void:
 			+ "signaling may run but data channels will not open — use a build with the WebRTC module."
 		)
 
-func cleanup() -> void:
+## Close all WebRTC peers and reset local id; keep [member _client] (use after transport drop or before new handshake).
+func reset_peer_sessions() -> void:
 	for pid in _by_peer.keys():
 		_close_peer(int(pid))
 	_by_peer.clear()
 	_local_id = -1
+	_webrtc_missing_warned = false
+	_relay_only_members_warned = false
+
+
+## Detach from [RakiyClient]: disconnect signals and clear client reference (e.g. replacing [method set_p2p_helper]).
+func cleanup() -> void:
+	_detach_client_signals()
 	_client = null
+	reset_peer_sessions()
+
+
+func _detach_client_signals() -> void:
+	var c: Node = _client
+	if c == null:
+		return
+	if c.lobby_created.is_connected(_on_client_lobby_created):
+		c.lobby_created.disconnect(_on_client_lobby_created)
+	if c.lobby_joined.is_connected(_on_client_lobby_joined):
+		c.lobby_joined.disconnect(_on_client_lobby_joined)
+	if c.lobby_member_joined.is_connected(_on_member_join):
+		c.lobby_member_joined.disconnect(_on_member_join)
+	if c.lobby_member_left.is_connected(_on_member_left):
+		c.lobby_member_left.disconnect(_on_member_left)
+	if c.disconnected.is_connected(_on_client_disconnected):
+		c.disconnected.disconnect(_on_client_disconnected)
 
 func poll() -> void:
 	if not _webrtc_available():
@@ -53,6 +101,14 @@ func poll() -> void:
 		if pc:
 			pc.poll()
 		var dc: WebRTCDataChannel = st.get("dc", null)
+		if dc:
+			# webrtc-native exposes WebRTCLibDataChannel (PacketPeer); it has no message_received signal.
+			dc.poll()
+			while dc.get_available_packet_count() > 0:
+				var pkt: PackedByteArray = dc.get_packet()
+				if dc.get_packet_error() != OK:
+					continue
+				_on_dc_message(int(pid), pkt)
 		if dc and dc.get_ready_state() == WebRTCDataChannel.STATE_OPEN and not st.get("hi", false):
 			st.hi = true
 			_by_peer[pid] = st
@@ -106,8 +162,30 @@ func try_send_p2p(target_peer_id: int, channel: int, reliable: bool, payload: Va
 	hdr.resize(3)
 	hdr.encode_u16(0, channel & 0xFFFF)
 	hdr[2] = 1 if reliable else 0
-	dc.put_packet(hdr + pl)
-	return true
+	return dc.put_packet(hdr + pl) == OK
+
+
+## Fan-out for [constant RakiyConstants.TARGET_LOBBY_BROADCAST]: send the same frame to every peer with an open data channel.
+func try_send_p2p_all(channel: int, reliable: bool, payload: Variant) -> int:
+	if not _webrtc_available():
+		return 0
+	var pl: PackedByteArray = (
+		str(payload).to_utf8_buffer() if typeof(payload) == TYPE_STRING else payload
+	)
+	var hdr := PackedByteArray()
+	hdr.resize(3)
+	hdr.encode_u16(0, channel & 0xFFFF)
+	hdr[2] = 1 if reliable else 0
+	var packet := hdr + pl
+	var sent := 0
+	for pid in _by_peer.keys():
+		var st: Dictionary = _by_peer[pid]
+		var dc: WebRTCDataChannel = st.get("dc", null)
+		if dc == null or dc.get_ready_state() != WebRTCDataChannel.STATE_OPEN:
+			continue
+		if dc.put_packet(packet) == OK:
+			sent += 1
+	return sent
 
 func try_deliver_incoming(_from_peer_id: int, _channel: int, _reliable: bool, _payload: Variant) -> bool:
 	return false
@@ -121,6 +199,22 @@ func count_open_data_channels() -> int:
 		if dc != null and dc.get_ready_state() == WebRTCDataChannel.STATE_OPEN:
 			n += 1
 	return n
+
+
+## One-line status for demo debug UI (native P2P only).
+func get_p2p_debug_summary() -> String:
+	if _client == null or str(_client.get("handshake_capability")) != "p2p":
+		return ""
+	if not _webrtc_available():
+		return "P2P: WebRTC not loaded — use Project → Tools → Download WebRTC native, or a Godot build with WebRTC"
+	if _local_id < 0:
+		return "P2P: offerer not started (no local peer id yet)"
+	if _by_peer.is_empty():
+		return "P2P: offerer not started (no WebRTC sessions yet)"
+	for pid in _by_peer.keys():
+		if int(pid) > _local_id:
+			return "P2P: offerer started"
+	return "P2P: answerer / sessions active"
 
 
 func _webrtc_available() -> bool:
@@ -145,9 +239,23 @@ func _ice_servers() -> Array:
 func _sync_members(members: Array) -> void:
 	if _client == null or _client.handshake_capability != "p2p":
 		return
+	if not _webrtc_available():
+		if not _webrtc_missing_warned:
+			_webrtc_missing_warned = true
+			push_warning(
+				"RakiyP2P: WebRTCPeerConnection is not available. "
+				+ "Install the webrtc-native GDExtension (Rakiy: Project → Tools → Download / update WebRTC native) "
+				+ "or use a Godot binary that includes the WebRTC module — otherwise signaling stays at 0 and only relay is used."
+			)
+		if _client.has_method("log_p2p"):
+			_client.log_p2p(
+				"WebRTC class missing — no P2P signaling. Install webrtc-native GDExtension or enable WebRTC in your engine build."
+			)
+		return
 	if _client.has_method("log_p2p"):
 		_client.log_p2p("_sync_members n=%d local_id=%d" % [members.size(), _local_id])
 	var want := {}
+	var relay_only_ids: Array = []
 	for m in members:
 		if m is not Dictionary:
 			continue
@@ -157,8 +265,17 @@ func _sync_members(members: Array) -> void:
 		if pid == _local_id:
 			continue
 		want[pid] = cap
-		if cap == RakiyConstants.MEMBER_CAP_P2P and _local_id >= 0:
+		if cap != RakiyConstants.MEMBER_CAP_P2P:
+			relay_only_ids.append(pid)
+			continue
+		if _local_id >= 0:
 			_maybe_start_peer(pid)
+	if relay_only_ids.size() > 0 and not _relay_only_members_warned and _client.has_method("log_p2p"):
+		_relay_only_members_warned = true
+		_client.log_p2p(
+			"Some peers are relay-only (cap 0), not P2P (1): %s — WebRTC skipped for them"
+			% str(relay_only_ids)
+		)
 	for pid in _by_peer.keys():
 		if not want.has(int(pid)):
 			_close_peer(int(pid))
@@ -213,7 +330,7 @@ func _start_as_offerer(remote_id: int) -> void:
 		if _client.has_method("log_p2p"):
 			_client.log_p2p("create_data_channel null for peer %d" % remote_id)
 		return
-	dc.message_received.connect(func(m: Variant): _on_dc_message(remote_id, m))
+	# Incoming data: drain via PacketPeer in poll() (webrtc-native has no message_received on WebRTCLibDataChannel).
 	_by_peer[remote_id] = {"pc": pc, "dc": dc}
 	var oerr := pc.create_offer()
 	if oerr != OK:
@@ -229,7 +346,12 @@ func _finalize_local_desc(remote_id: int, type_str: String, sdp: String) -> void
 	var pc: WebRTCPeerConnection = st.get("pc", null)
 	if pc == null:
 		return
-	pc.set_local_description(type_str, sdp)
+	var serr := pc.set_local_description(type_str, sdp)
+	if serr != OK:
+		if _client.has_method("log_p2p"):
+			_client.log_p2p("set_local_description failed peer %d: %s" % [remote_id, error_string(serr)])
+		push_warning("RakiyP2P: set_local_description failed: %s" % error_string(serr))
+		return
 	_send_sig(remote_id, JSON.stringify({"t": type_str.to_lower(), "sdp": sdp}))
 
 func _handle_offer(from_peer_id: int, sdp: String) -> void:
@@ -257,18 +379,28 @@ func _handle_offer(from_peer_id: int, sdp: String) -> void:
 	)
 	pc.data_channel_received.connect(func(ch: WebRTCDataChannel): _bind_remote_dc(from_peer_id, ch))
 	_by_peer[from_peer_id] = {"pc": pc, "dc": null}
-	if pc.set_remote_description("offer", sdp) != OK:
+	# webrtc-native: set_remote_description("offer", ...) creates the answer internally (no create_answer()).
+	# Godot's built-in WebRTC module: call create_answer() after setting the remote offer.
+	var rerr := pc.set_remote_description("offer", sdp)
+	if rerr != OK:
+		if _client.has_method("log_p2p"):
+			_client.log_p2p("set_remote_description(offer) failed peer %d: %s" % [from_peer_id, error_string(rerr)])
+		push_warning("RakiyP2P: set_remote_description(offer) failed: %s" % error_string(rerr))
 		_close_peer(from_peer_id)
 		return
-	if pc.create_answer() != OK:
-		_close_peer(from_peer_id)
+	if pc.has_method("create_answer"):
+		var aerr = pc.create_answer()
+		if aerr != OK:
+			if _client.has_method("log_p2p"):
+				_client.log_p2p("create_answer failed peer %d: %s" % [from_peer_id, error_string(aerr)])
+			push_warning("RakiyP2P: create_answer failed: %s" % error_string(aerr))
+			_close_peer(from_peer_id)
 
 func _bind_remote_dc(remote_id: int, ch: WebRTCDataChannel) -> void:
 	if not _by_peer.has(remote_id):
 		return
 	var st: Dictionary = _by_peer[remote_id]
 	st.dc = ch
-	ch.message_received.connect(func(m: Variant): _on_dc_message(remote_id, m))
 	_by_peer[remote_id] = st
 
 func _handle_answer(from_peer_id: int, sdp: String) -> void:
@@ -276,7 +408,11 @@ func _handle_answer(from_peer_id: int, sdp: String) -> void:
 	var pc: WebRTCPeerConnection = st.get("pc", null)
 	if pc == null:
 		return
-	pc.set_remote_description("answer", sdp)
+	var rerr := pc.set_remote_description("answer", sdp)
+	if rerr != OK:
+		if _client.has_method("log_p2p"):
+			_client.log_p2p("set_remote_description(answer) failed peer %d: %s" % [from_peer_id, error_string(rerr)])
+		push_warning("RakiyP2P: set_remote_description(answer) failed: %s" % error_string(rerr))
 
 func _handle_candidate(from_peer_id: int, media: String, index: int, cand_line: String) -> void:
 	var st: Dictionary = _by_peer.get(from_peer_id, {})

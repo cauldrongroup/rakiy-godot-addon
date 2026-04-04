@@ -92,6 +92,7 @@ func _ready() -> void:
 			_rc.handshake_capability = "p2p"
 			_p2p_helper = _RakiyP2PScript.new()
 			_rc.set_p2p_helper(_p2p_helper)
+			_p2p_sync_members_from_demo()
 		if not _rc.debug_log.is_connected(_on_rakiy_debug_log):
 			_rc.debug_log.connect(_on_rakiy_debug_log)
 
@@ -116,6 +117,19 @@ func _get_client() -> Node:
 	if c != null:
 		return c
 	return get_node_or_null("RakiyClient")
+
+
+func _p2p_sync_members_from_demo() -> void:
+	if _p2p_helper == null:
+		return
+	var client: Node = _get_client()
+	if client == null or str(client.handshake_capability) != "p2p":
+		return
+	if not client.is_handshaken():
+		return
+	if _current_lobby_id.is_empty():
+		return
+	_p2p_helper.sync_members_from_lobby(_current_members)
 
 
 func _connect_signals() -> void:
@@ -456,6 +470,7 @@ func _on_disconnect_pressed() -> void:
 func _on_handshake_ok(_peer_id: int) -> void:
 	_update_ui_state()
 	_ui.go_to_lobby_tab()
+	_p2p_sync_members_from_demo()
 	var client := _get_client()
 	if client:
 		client.lobby_list(_DEMO_GAME_ID, true)
@@ -475,7 +490,11 @@ func _process(delta: float) -> void:
 		if _transport_debug_accum >= 3.0:
 			_transport_debug_accum = 0.0
 			if client.has_method("get_transport_summary"):
-				_demo_log(client.get_transport_summary())
+				var summary: String = client.get_transport_summary()
+				_demo_log(summary)
+				_ui.append_log("[transport] %s\n" % summary)
+				if _p2p_helper != null and str(client.handshake_capability) == "p2p":
+					_ui.append_log("[p2p] %s\n" % _p2p_helper.get_p2p_debug_summary())
 
 
 func _on_websocket_opened() -> void:
@@ -541,6 +560,7 @@ func _on_lobby_created(lobby_id: String, members: Array, passcode: String = "") 
 		_ui.append_log("[Lobby created] %s passcode %s\n" % [lobby_id, passcode])
 	_ensure_local_player()
 	_sync_remote_roster()
+	_p2p_sync_members_from_demo()
 	_update_ui_state()
 	_ui.enter_lobby_session()
 
@@ -553,6 +573,7 @@ func _on_lobby_joined(lobby_id: String, members: Array) -> void:
 	_ui.append_log("[Lobby joined] %s\n" % lobby_id)
 	_ensure_local_player()
 	_sync_remote_roster()
+	_p2p_sync_members_from_demo()
 	_update_ui_state()
 	_ui.enter_lobby_session()
 
@@ -574,6 +595,7 @@ func _on_lobby_member_joined(lobby_id: String, peer_id: int, username: String, c
 	_current_members.append(_member_dict(peer_id, username, capability))
 	_refresh_members_list()
 	_ensure_remote_avatar(peer_id, username)
+	_p2p_sync_members_from_demo()
 
 
 func _on_lobby_member_left(lobby_id: String, peer_id: int) -> void:
@@ -586,6 +608,7 @@ func _on_lobby_member_left(lobby_id: String, peer_id: int) -> void:
 	_current_members = next
 	_refresh_members_list()
 	_destroy_remote_avatar(peer_id)
+	_p2p_sync_members_from_demo()
 
 
 func _on_lobby_list_received(lobbies: Array) -> void:

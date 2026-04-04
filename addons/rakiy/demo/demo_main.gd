@@ -561,6 +561,7 @@ func _on_lobby_created(lobby_id: String, members: Array, passcode: String = "") 
 	_ensure_local_player()
 	_sync_remote_roster()
 	_p2p_sync_members_from_demo()
+	call_deferred("_deferred_request_peer_poses")
 	_update_ui_state()
 	_ui.enter_lobby_session()
 
@@ -574,6 +575,7 @@ func _on_lobby_joined(lobby_id: String, members: Array) -> void:
 	_ensure_local_player()
 	_sync_remote_roster()
 	_p2p_sync_members_from_demo()
+	call_deferred("_deferred_request_peer_poses")
 	_update_ui_state()
 	_ui.enter_lobby_session()
 
@@ -615,12 +617,13 @@ func _on_lobby_list_received(lobbies: Array) -> void:
 	_ui.clear_lobby_list_rows()
 	for lob in lobbies:
 		if lob is Dictionary:
-			var id_str: String = lob.get("lobby_id", "")
-			var mc: int = lob.get("member_count", 0)
-			var mp: int = lob.get("max_players", 0)
-			var name_str: String = lob.get("name", "")
+			var id_str: String = str(lob.get("lobby_id", ""))
+			var mc: int = int(lob.get("member_count", 0))
+			var mp: int = int(lob.get("max_players", 0))
+			var name_str: String = str(lob.get("name", ""))
+			var mp_str: String = "—" if mp < 0 else str(mp)
 			var display: String = id_str if name_str.is_empty() else "%s — %s" % [name_str, id_str]
-			_ui.add_lobby_list_row("%s (%d / %d)" % [display, mc, mp])
+			_ui.add_lobby_list_row("%s (%d / %s)" % [display, mc, mp_str])
 
 
 func _on_lobby_error(reason: String) -> void:
@@ -676,11 +679,51 @@ func _on_copy_lobby_id_pressed() -> void:
 		_ui.append_log("[Copied lobby ID to clipboard]\n")
 
 
+func _send_pose_snapshot_request_to_lobby() -> void:
+	var client := _get_client()
+	if client == null or not client.is_handshaken() or _current_lobby_id.is_empty():
+		return
+	var req := PackedByteArray([RakiyPack.FORMAT_APP_POSE_SNAPSHOT_REQUEST])
+	client.send_lobby_broadcast(RakiyConstants.CHANNEL_RELIABLE_GAME, true, req)
+
+
+func _send_full_pose_keyframe_to_peer(target_peer_id: int) -> void:
+	if _current_lobby_id.is_empty() or _local_player == null:
+		return
+	var client := _get_client()
+	if client == null or not client.is_handshaken():
+		return
+	var st: Dictionary = _local_player.get_pose_dict()
+	var pkt: PackedByteArray = RakiyPack.pack_player_state_from_dict(st)
+	client.send_data(target_peer_id, RakiyConstants.CHANNEL_RELIABLE_GAME, true, pkt)
+	_last_sent_pose = st.duplicate(true)
+
+
+func _try_handle_pose_snapshot_request(peer_id: int, pkt: PackedByteArray) -> bool:
+	if pkt.size() != 1:
+		return false
+	if int(pkt[0]) != RakiyPack.FORMAT_APP_POSE_SNAPSHOT_REQUEST:
+		return false
+	_send_full_pose_keyframe_to_peer(peer_id)
+	return true
+
+
+func _deferred_request_peer_poses() -> void:
+	var client := _get_client()
+	if client == null:
+		return
+	if _other_member_peer_ids(client.get_peer_id()).size() > 0:
+		_send_pose_snapshot_request_to_lobby()
+
+
 func _on_data_received(peer_id: int, _channel: int, _reliable: bool, payload: Variant) -> void:
 	var client := _get_client()
 	if client == null or peer_id == client.get_peer_id():
 		return
 	if payload is PackedByteArray:
+		var pkt: PackedByteArray = payload
+		if _try_handle_pose_snapshot_request(peer_id, pkt):
+			return
 		_apply_incoming_pose(peer_id, payload)
 	else:
 		_ui.append_log("[From %d] %s\n" % [peer_id, payload])

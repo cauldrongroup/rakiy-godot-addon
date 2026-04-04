@@ -18,6 +18,8 @@ const FORMAT_V4_PHYSICS_ANGULAR := 0x07
 const FORMAT_BATCH_PHYSICS_ANGULAR := 0x08
 const FORMAT_SELECTIVE_POSE := 0x09
 const FORMAT_SELECTIVE_PHYSICS := 0x0A
+## Reliable 1-byte app control: ask other lobby members to send a full pose keyframe to the requester (see demo / template session code).
+const FORMAT_APP_POSE_SNAPSHOT_REQUEST := 0x0B
 const FORMAT_MERGED_SEGMENTS := 0xFE
 
 ## Bit order matches encode order: px, py, pz, pitch, yaw, then vx..vz, wx..wz (0x0A only).

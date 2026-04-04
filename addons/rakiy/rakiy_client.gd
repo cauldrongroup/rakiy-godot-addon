@@ -353,6 +353,7 @@ func _handle_control(buf: PackedByteArray) -> void:
 		var lid := buf.slice(o, o + l2).get_string_from_utf8()
 		lobby_left.emit(lid)
 	elif op == 0x13:
+		# Matches server encodeLobbyList: u16 id_len, u8 member_count, u8 max_players (0xFF = unset), u16 name_len, id utf8, name utf8.
 		var lobbies: Array = []
 		if buf.size() < o + 2:
 			return
@@ -361,15 +362,30 @@ func _handle_control(buf: PackedByteArray) -> void:
 		for _j in count:
 			if buf.size() < o + 6:
 				return
-			var elen := buf.decode_u16(o)
+			var id_len := buf.decode_u16(o)
 			o += 2
-			var eid := buf.slice(o, o + elen).get_string_from_utf8()
-			o += elen
+			var member_count := int(buf[o])
+			o += 1
+			var max_raw := int(buf[o])
+			o += 1
+			var name_len := buf.decode_u16(o)
 			o += 2
-			var nlen := buf.decode_u16(o)
-			o += 2
-			o += nlen
-			lobbies.append({"lobby_id": eid})
+			if buf.size() < o + id_len + name_len:
+				return
+			var eid := buf.slice(o, o + id_len).get_string_from_utf8()
+			o += id_len
+			var lname := buf.slice(o, o + name_len).get_string_from_utf8()
+			o += name_len
+			var entry: Dictionary = {
+				"lobby_id": eid,
+				"member_count": member_count,
+				"name": lname,
+			}
+			if max_raw != 0xFF:
+				entry["max_players"] = max_raw
+			else:
+				entry["max_players"] = -1
+			lobbies.append(entry)
 		lobby_list_received.emit(lobbies)
 	elif op == 0x14:
 		if buf.size() < o + 2:

@@ -82,6 +82,11 @@ The add-on is written for Godot’s built-in WebRTC API and stays compatible wit
 
 The demo scene **`demo/main.tscn`** logs **`[transport]`** and **`[p2p]`** lines to the in-game log when **`_debug`** is true. Enable **`RakiyClient.debug`** for **`[Rakiy]`** / **`[p2p]`** lines in the Godot output.
 
+### Lobby list (`0x13`) and pose snapshot request
+
+- **Lobby list** responses match the server’s **`encodeLobbyList`** layout: `u16` id length, `u8` member count, `u8` max players (`0xFF` = unset), `u16` name length, UTF-8 lobby id, UTF-8 display name.
+- **`RakiyPack.FORMAT_APP_POSE_SNAPSHOT_REQUEST` (`0x0B`)**: optional **reliable** single-byte game payload. Recipients should reply with a full **v2** pose via **`RakiyPack.pack_player_state_from_dict`** sent **to the requesting peer** on **`CHANNEL_RELIABLE_GAME`**. The demo (and the **template-rakiy** project) broadcasts this once after **create/join lobby** when other members exist, so remote avatars get a keyframe immediately instead of waiting for the next periodic snapshot.
+
 ## Manual tests (cross-play)
 
 1. **Web + desktop:** HTML5 with **`relay`** and desktop with **`p2p`**; same lobby; web traffic stays on the relay.

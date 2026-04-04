@@ -145,6 +145,12 @@ func set_p2p_helper(helper: RakiyP2P) -> void:
 	if _p2p:
 		_p2p.attach_client(self)
 
+
+func log_p2p(line: String) -> void:
+	if debug:
+		_dbg("[p2p] %s" % line)
+
+
 func poll() -> void:
 	_ws.poll()
 	var st := _ws.get_ready_state()
@@ -179,6 +185,9 @@ func poll() -> void:
 		_pending_handshake = false
 	if st != WebSocketPeer.STATE_OPEN:
 		return
+	# Advance WebRTC before and after draining WS so session_description / ICE react immediately.
+	if _p2p:
+		_p2p.poll()
 	while _ws.get_available_packet_count() > 0:
 		var is_text := _ws.was_string_packet()
 		var pkt: PackedByteArray = _ws.get_packet()
@@ -196,7 +205,7 @@ func poll() -> void:
 			):
 				if debug and is_text:
 					_dbg(
-						"ws TEXT opcode but Rakiy binary magic=0x%X; routing to binary (signaling/control/relay)"
+						"ws TEXT opcode but Rakiy binary magic=0x%08X; routing to binary (signaling/control/relay)"
 						% magic
 					)
 				_handle_binary(pkt)
@@ -280,8 +289,11 @@ func _handle_binary(buf: PackedByteArray) -> void:
 		payload = buf.slice(16, 16 + plen32)
 	var reliable := (flags & 1) != 0
 	var is_utf8 := (flags & 2) != 0
-	if channel == RakiyConstants.CHANNEL_SIGNALING and _p2p:
+	var ch_u16: int = channel & 0xFFFF
+	var sig_ch: int = RakiyConstants.CHANNEL_SIGNALING & 0xFFFF
+	if ch_u16 == sig_ch and _p2p:
 		_stat_relay_sig_in += 1
+		# Proxies may clear RELAY_FLAG_UTF8; signaling payloads are still UTF-8 JSON.
 		_p2p.on_signaling_incoming(from_peer, payload, is_utf8)
 		return
 	var out: Variant = payload
@@ -485,7 +497,7 @@ func send_data(target_peer_id: int, channel: int, reliable: bool, payload: Varia
 		out.encode_u32(12, pl.size())
 		for i in pl.size():
 			out[16 + i] = pl[i]
-	if channel == RakiyConstants.CHANNEL_SIGNALING:
+	if (channel & 0xFFFF) == (RakiyConstants.CHANNEL_SIGNALING & 0xFFFF):
 		_stat_relay_sig_out += 1
 	else:
 		_stat_relay_game_out += 1

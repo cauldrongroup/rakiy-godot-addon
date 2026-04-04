@@ -58,19 +58,26 @@ func poll() -> void:
 			_by_peer[pid] = st
 			p2p_peer_connected.emit(int(pid))
 
-func on_signaling_incoming(from_peer_id: int, payload: PackedByteArray, is_utf8: bool) -> void:
+func on_signaling_incoming(from_peer_id: int, payload: PackedByteArray, _is_utf8: bool) -> void:
 	if not _webrtc_available() or _client == null:
 		return
-	if not is_utf8:
-		return
+	# Always decode as UTF-8: some proxies strip RELAY_FLAG_UTF8 even for JSON signaling.
 	var txt := payload.get_string_from_utf8()
+	if txt.is_empty():
+		if _client.has_method("log_p2p"):
+			_client.log_p2p("signaling empty payload from peer %d" % from_peer_id)
+		return
 	var j = JSON.new()
 	if j.parse(txt) != OK:
+		if _client.has_method("log_p2p"):
+			_client.log_p2p("signaling JSON parse fail from peer %d: %s…" % [from_peer_id, txt.substr(0, 64)])
 		return
 	var d = j.data
 	if typeof(d) != TYPE_DICTIONARY:
 		return
 	var kind: String = str(d.get("t", ""))
+	if _client.has_method("log_p2p") and (kind == "offer" or kind == "answer" or kind == "candidate"):
+		_client.log_p2p("sig in %s from peer %d" % [kind, from_peer_id])
 	if kind == "offer":
 		_handle_offer(from_peer_id, str(d.get("sdp", "")))
 	elif kind == "answer":
@@ -138,6 +145,8 @@ func _ice_servers() -> Array:
 func _sync_members(members: Array) -> void:
 	if _client == null or _client.handshake_capability != "p2p":
 		return
+	if _client.has_method("log_p2p"):
+		_client.log_p2p("_sync_members n=%d local_id=%d" % [members.size(), _local_id])
 	var want := {}
 	for m in members:
 		if m is not Dictionary:
@@ -182,7 +191,10 @@ func _start_as_offerer(remote_id: int) -> void:
 	if not _webrtc_available():
 		return
 	var pc := WebRTCPeerConnection.new()
-	if pc.initialize({"iceServers": _ice_servers()}) != OK:
+	var ierr := pc.initialize({"iceServers": _ice_servers()})
+	if ierr != OK:
+		if _client.has_method("log_p2p"):
+			_client.log_p2p("WebRTC initialize failed for peer %d: %s" % [remote_id, error_string(ierr)])
 		return
 	pc.session_description_created.connect(
 		func(t: String, sdp: String): _finalize_local_desc(remote_id, t, sdp)
@@ -198,11 +210,19 @@ func _start_as_offerer(remote_id: int) -> void:
 	)
 	var dc := pc.create_data_channel("rakiy", {"ordered": true})
 	if dc == null:
+		if _client.has_method("log_p2p"):
+			_client.log_p2p("create_data_channel null for peer %d" % remote_id)
 		return
 	dc.message_received.connect(func(m: Variant): _on_dc_message(remote_id, m))
 	_by_peer[remote_id] = {"pc": pc, "dc": dc}
-	if pc.create_offer() != OK:
+	var oerr := pc.create_offer()
+	if oerr != OK:
+		if _client.has_method("log_p2p"):
+			_client.log_p2p("create_offer failed for peer %d: %s" % [remote_id, error_string(oerr)])
 		_close_peer(remote_id)
+		return
+	if _client.has_method("log_p2p"):
+		_client.log_p2p("create_offer OK, waiting session_description (peer %d)" % remote_id)
 
 func _finalize_local_desc(remote_id: int, type_str: String, sdp: String) -> void:
 	var st: Dictionary = _by_peer.get(remote_id, {})
@@ -218,7 +238,10 @@ func _handle_offer(from_peer_id: int, sdp: String) -> void:
 	if _by_peer.has(from_peer_id):
 		return
 	var pc := WebRTCPeerConnection.new()
-	if pc.initialize({"iceServers": _ice_servers()}) != OK:
+	var ierr := pc.initialize({"iceServers": _ice_servers()})
+	if ierr != OK:
+		if _client.has_method("log_p2p"):
+			_client.log_p2p("answerer initialize failed peer %d: %s" % [from_peer_id, error_string(ierr)])
 		return
 	pc.session_description_created.connect(
 		func(t: String, ans: String): _finalize_local_desc(from_peer_id, t, ans)
@@ -279,6 +302,8 @@ func _on_dc_message(remote_id: int, message: Variant) -> void:
 
 func _send_sig(remote_id: int, json_txt: String) -> void:
 	if _client:
+		if _client.has_method("log_p2p"):
+			_client.log_p2p("sig out → peer %d (%d bytes)" % [remote_id, json_txt.length()])
 		_client.send_data(remote_id, RakiyConstants.CHANNEL_SIGNALING, true, json_txt)
 
 func _close_peer(remote_id: int) -> void:

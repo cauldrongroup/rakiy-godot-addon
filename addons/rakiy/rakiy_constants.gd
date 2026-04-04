@@ -1,12 +1,19 @@
 class_name RakiyConstants
 extends RefCounted
 
-## Channel IDs for data frames. Use small integers; semantics match the Rakiy backend.
-## See protocol: https://github.com/cauldrongroup/rakiy-godot-addon/blob/main/protocol.md
-
+## Reliable / control-style traffic (project convention).
 const CHANNEL_CONTROL := 0
 const CHANNEL_RELIABLE_GAME := 1
 const CHANNEL_UNRELIABLE_GAME := 2
+## Reserved for WebRTC signaling JSON over the Rakiy relay (native `p2p` clients only).
+const CHANNEL_SIGNALING := 65534
 
-## Client→server relay only: fan-out to all peers in shared lobbies (see multiplayer/protocol.md).
 const TARGET_LOBBY_BROADCAST := 0
+
+## Lobby member capability (matches wire byte).
+const MEMBER_CAP_RELAY := 0
+const MEMBER_CAP_P2P := 1
+
+const CONTROL_MAGIC := 0x024B4152
+const RELAY_MAGIC_V1 := 0x014B4152
+const RELAY_MAGIC_V2 := 0x034B4152
